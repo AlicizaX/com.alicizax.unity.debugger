@@ -1,0 +1,29 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="qc-container" class="qc-container" style="display: none;">
+        <ui:VisualElement name="qc-header" class="qc-header">
+            <ui:Button name="qc-zoom-out" text="-" class="qc-header-button" />
+            <ui:Label name="qc-zoom-label" text="100%" class="qc-zoom-label" />
+            <ui:Button name="qc-zoom-in" text="+" class="qc-header-button" />
+        </ui:VisualElement>
+        <ui:ScrollView name="qc-log-scroll" class="qc-log-scroll" mode="Vertical">
+            <ui:Label name="qc-log-text" class="qc-log-text" />
+        </ui:ScrollView>
+        <ui:VisualElement name="qc-footer" class="qc-footer">
+            <ui:VisualElement name="qc-input-row" class="qc-input-row">
+                <ui:Label name="qc-suggestion-text" class="qc-suggestion-text" />
+                <ui:Label name="qc-placeholder" class="qc-placeholder" />
+                <ui:TextField name="qc-input" class="qc-input" />
+            </ui:VisualElement>
+            <ui:Button name="qc-submit" text="Submit" class="qc-footer-button" />
+            <ui:Button name="qc-clear" text="Clear" class="qc-footer-button" />
+            <ui:Button name="qc-close" text="Close" class="qc-footer-button" />
+        </ui:VisualElement>
+        <ui:Label name="qc-popup" class="qc-popup" />
+        <ui:Label name="qc-job-counter" class="qc-job-counter" />
+        <ui:VisualElement name="qc-resize-handle" class="qc-resize-handle">
+            <ui:VisualElement class="qc-resize-grip-line qc-resize-grip-line-a" />
+            <ui:VisualElement class="qc-resize-grip-line qc-resize-grip-line-b" />
+            <ui:VisualElement class="qc-resize-grip-line qc-resize-grip-line-c" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
