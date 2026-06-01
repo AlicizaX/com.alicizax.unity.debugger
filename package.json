@@ -1,15 +1,15 @@
 {
-  "name": "com.alicizax.unity.console",
-  "displayName": "Aliciza X Console",
+  "name": "com.alicizax.unity.debugger",
+  "displayName": "Aliciza X Debugger",
   "category": "Aliciza X",
-  "description": "Aliciza X Console",
+  "description": "Aliciza X Debugger",
   "version": "2.0.0",
   "unity": "2022.3",
   "keywords": [
     "Aliciza X"
   ],
   "repository": {
-    "name": "com.alicizax.unity.console",
+    "name": "com.alicizax.unity.debugger",
     "url": "https://github.com/AlicizaX/",
     "type": "git"
   },
