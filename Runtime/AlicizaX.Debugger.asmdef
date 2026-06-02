@@ -1,0 +1,18 @@
+{
+    "name": "AlicizaX.Debugger",
+    "rootNamespace": "",
+    "references": [
+        "Unity.InputSystem",
+        "ZString",
+        "AlicizaX.Framework.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
