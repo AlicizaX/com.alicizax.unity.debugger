@@ -79,9 +79,9 @@ MonoBehaviour:
     Alt: 0
     Shift: 0
   _toggleConsoleKey:
-    Key: 9
-    Ctrl: 0
-    Alt: 1
+    Key: 32
+    Ctrl: 1
+    Alt: 0
     Shift: 0
   _zoomInKey:
     Key: 61
@@ -107,7 +107,7 @@ MonoBehaviour:
     Key: 280
     Ctrl: 0
     Alt: 0
-    Shift: 1
+    Shift: 0
   _nextCommandKey: 273
   _previousCommandKey: 274
   _cancelActionsKey:

@@ -362,7 +362,6 @@ namespace AlicizaX.Console
                     if (InputHelper.GetKeyDown(_nextCommandKey)) { SelectPreviousHistoryCommand(); }
                     else if (InputHelper.GetKeyDown(_previousCommandKey)) { SelectNextHistoryCommand(); }
                 }
-                ProcessAutocomplete();
             }
         }
 
@@ -850,14 +849,6 @@ namespace AlicizaX.Console
             {
                 UpdatePopupDisplay();
             }
-        }
-
-        private void ProcessAutocomplete()
-        {
-            if (!_enableAutocomplete) { return; }
-
-            if (_selectNextSuggestionKey.IsPressed()) { SelectSuggestionOffset(1); }
-            if (_selectPreviousSuggestionKey.IsPressed()) { SelectSuggestionOffset(-1); }
         }
 
         private void SelectSuggestionOffset(int offset)
