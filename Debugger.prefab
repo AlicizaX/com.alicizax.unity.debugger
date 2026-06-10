@@ -65,7 +65,8 @@ MonoBehaviour:
   _document: {fileID: 6589944812773463395}
   _visualTree: {fileID: 9197481963319205126, guid: 38c43cd50fe64fba8e6895ec8cb8a9b1, type: 3}
   _styleSheet: {fileID: 7433441132597879392, guid: 66506de6d8a444a29c662a5377ca7d35, type: 3}
-  _font: {fileID: 12800000, guid: eb42c3b8bd49c574bb98289bb3ea122c, type: 3}
+  _fontAsset: {fileID: 0}
+  _font: {fileID: 12800000, guid: 75dc6fd4068d60b48a885cd7b49fedb5, type: 3}
   _panelColor: {r: 0.1, g: 0.1, b: 0.1, a: 0.95}
   _submitCommandKey: 13
   _showConsoleKey:
@@ -171,7 +172,8 @@ MonoBehaviour:
   m_WindowOpacity: 1
   m_EnableFloatingToggleSnap: 1
   m_PanelSettings: {fileID: 11400000, guid: 66471f1a850eadc4eb6821c730bfce50, type: 2}
-  m_Font: {fileID: 12800000, guid: eb42c3b8bd49c574bb98289bb3ea122c, type: 3}
+  m_FontAsset: {fileID: 0}
+  m_Font: {fileID: 12800000, guid: 75dc6fd4068d60b48a885cd7b49fedb5, type: 3}
   m_ConsoleWindow:
     m_LockScroll: 1
     m_MaxLine: 100

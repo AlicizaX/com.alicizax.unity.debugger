@@ -379,6 +379,15 @@ namespace AlicizaX.Debugger
                     isReadOnly = true,
                     value = value ?? string.Empty
                 };
+                if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                {
+                    textField.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
+                }
+                else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
+                {
+                    textField.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                }
+
                 textField.style.minHeight = 140f * scale;
                 textField.style.whiteSpace = WhiteSpace.Normal;
                 textField.style.flexGrow = 1f;
@@ -797,6 +806,15 @@ namespace AlicizaX.Debugger
                 VisualElement input = textField.Q(className: "unity-base-text-field__input") ?? textField.Q(className: "unity-text-field__input");
                 if (input != null)
                 {
+                    if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                    {
+                        input.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
+                    }
+                    else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
+                    {
+                        input.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                    }
+
                     input.style.backgroundColor = Color.clear;
                     input.style.unityBackgroundImageTintColor = Color.clear;
                     input.style.color = DebuggerTheme.PrimaryText;

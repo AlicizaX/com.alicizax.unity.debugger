@@ -354,6 +354,15 @@ namespace AlicizaX.Debugger
             {
                 float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
                 Label label = new Label();
+                if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                {
+                    label.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
+                }
+                else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
+                {
+                    label.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                }
+
                 label.style.height = 36f * scale;
                 label.style.unityTextAlign = TextAnchor.MiddleLeft;
                 label.style.paddingLeft = 10f * scale;

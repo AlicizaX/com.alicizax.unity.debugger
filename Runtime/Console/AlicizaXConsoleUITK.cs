@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using ColorExtensions = AlicizaX.Console.Utilities.ColorExtensions;
 
@@ -53,6 +54,7 @@ namespace AlicizaX.Console
         [SerializeField] private StyleSheet _styleSheet;
 
         // ── 外观设置（替代 AlicizaXConsoleTheme）────────────────────────────
+        [SerializeField] private FontAsset _fontAsset;
         [SerializeField] private Font _font;
         [SerializeField] private Color _panelColor = new Color(0.1f, 0.1f, 0.1f, 0.95f);
 
@@ -380,9 +382,29 @@ namespace AlicizaX.Console
 
             ApplyPanelBackground(_panelColor);
 
-            if (_font != null)
+            if (_fontAsset != null)
             {
-                _container.style.unityFont = new StyleFont(_font);
+                _container.style.unityFontDefinition = new StyleFontDefinition(_fontAsset);
+                ApplyFont(_consoleLogText);
+                ApplyFont(_consoleSuggestionText);
+                ApplyFont(_inputPlaceholderText);
+                ApplyFont(_suggestionPopupText);
+                ApplyFont(_jobCounterText);
+                ApplyFont(_consoleInput);
+                ApplyFont(_consoleInput?.Q(className: "unity-base-text-field__input"));
+                ApplyFont(_consoleInput?.Q(className: "unity-text-field__input"));
+            }
+            else if (_font != null)
+            {
+                _container.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(_font));
+                ApplyFont(_consoleLogText);
+                ApplyFont(_consoleSuggestionText);
+                ApplyFont(_inputPlaceholderText);
+                ApplyFont(_suggestionPopupText);
+                ApplyFont(_jobCounterText);
+                ApplyFont(_consoleInput);
+                ApplyFont(_consoleInput?.Q(className: "unity-base-text-field__input"));
+                ApplyFont(_consoleInput?.Q(className: "unity-text-field__input"));
             }
 
             _container.style.transformOrigin = new TransformOrigin(
@@ -406,6 +428,23 @@ namespace AlicizaX.Console
             if (scrollContent != null)
             {
                 scrollContent.style.backgroundColor = backgroundColor;
+            }
+        }
+
+        private void ApplyFont(VisualElement element)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            if (_fontAsset != null)
+            {
+                element.style.unityFontDefinition = new StyleFontDefinition(_fontAsset);
+            }
+            else if (_font != null)
+            {
+                element.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(_font));
             }
         }
 

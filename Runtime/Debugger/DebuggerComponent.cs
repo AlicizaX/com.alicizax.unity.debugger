@@ -4,8 +4,10 @@ using System.Reflection;
 using Cysharp.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using Object = UnityEngine.Object;
+using TextAsset = UnityEngine.TextAsset;
 
 namespace AlicizaX.Debugger
 {
@@ -61,6 +63,7 @@ namespace AlicizaX.Debugger
         [SerializeField, Range(0.2f, 1f)] private float m_WindowOpacity = 1f;
         [SerializeField] private bool m_EnableFloatingToggleSnap = true;
         [SerializeField] private PanelSettings m_PanelSettings;
+        [SerializeField] private FontAsset m_FontAsset;
         [SerializeField] private Font m_Font;
         [SerializeField] private ConsoleWindow m_ConsoleWindow = new ConsoleWindow();
 
@@ -217,6 +220,21 @@ namespace AlicizaX.Debugger
                 }
 
                 m_Font = value;
+                ApplyFont();
+            }
+        }
+
+        public FontAsset CustomFontAsset
+        {
+            get => m_FontAsset;
+            set
+            {
+                if (m_FontAsset == value)
+                {
+                    return;
+                }
+
+                m_FontAsset = value;
                 ApplyFont();
             }
         }
@@ -1488,9 +1506,20 @@ namespace AlicizaX.Debugger
                 return;
             }
 
-            _root.style.unityFont = m_Font != null
-                ? new StyleFont(m_Font)
-                : new StyleFont(StyleKeyword.Null);
+            if (m_FontAsset != null)
+            {
+                _root.style.unityFontDefinition = new StyleFontDefinition(m_FontAsset);
+                return;
+            }
+
+            if (m_Font != null)
+            {
+                _root.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(m_Font));
+                return;
+            }
+
+            _root.style.unityFontDefinition = new StyleFontDefinition(StyleKeyword.Null);
+            _root.style.unityFont = new StyleFont(StyleKeyword.Null);
         }
 
         private void CloseToFloatingEntry()
