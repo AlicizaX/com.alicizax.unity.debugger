@@ -690,11 +690,6 @@ namespace AlicizaX.Debugger
                     return;
                 }
 
-#if UNITY_6000_0_OR_NEWER
-                textField.cursorColor = Color.clear;
-                textField.selectionColor = DebuggerTheme.TextSelection;
-#endif
-
                 ITextSelection selection = null;
                 try
                 {
