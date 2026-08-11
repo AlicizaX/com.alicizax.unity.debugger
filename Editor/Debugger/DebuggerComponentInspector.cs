@@ -19,11 +19,25 @@ namespace AlicizaX.Debugger.Editor
         private SerializedProperty _windowOpacityProperty;
         private SerializedProperty _panelSettingsProperty;
         private SerializedProperty _fontProperty;
+        private SerializedProperty _commandWindowProperty;
+        private SerializedProperty _commandAssemblyNamesProperty;
+        private SerializedProperty _commandEnableAutocompleteProperty;
+        private SerializedProperty _commandShowPopupDisplayProperty;
+        private SerializedProperty _commandStoreCommandHistoryProperty;
+        private SerializedProperty _commandMaxStoredLogsProperty;
+        private SerializedProperty _commandSubmitKeyProperty;
+        private SerializedProperty _commandNextSuggestionKeyProperty;
+        private SerializedProperty _commandPreviousSuggestionKeyProperty;
+        private SerializedProperty _commandNextHistoryKeyProperty;
+        private SerializedProperty _commandPreviousHistoryKeyProperty;
+        private SerializedProperty _commandCancelActionsKeyProperty;
         private GUIStyle _panelStyle;
         private GUIStyle _fieldRowStyle;
         private GUIStyle _fieldLabelStyle;
         private GUIStyle _rowLabelStyle;
         private string[] _activeWindowOptions;
+        private bool _commandFoldout = true;
+
         private void OnEnable()
         {
             _activeWindowProperty = serializedObject.FindProperty("m_ActiveWindow");
@@ -31,6 +45,22 @@ namespace AlicizaX.Debugger.Editor
             _windowOpacityProperty = serializedObject.FindProperty("m_WindowOpacity");
             _panelSettingsProperty = serializedObject.FindProperty("m_PanelSettings");
             _fontProperty = serializedObject.FindProperty("m_Font");
+            _commandWindowProperty = serializedObject.FindProperty("m_CommandWindow");
+            if (_commandWindowProperty != null)
+            {
+                _commandAssemblyNamesProperty = _commandWindowProperty.FindPropertyRelative("m_CommandAssemblyNames");
+                _commandEnableAutocompleteProperty = _commandWindowProperty.FindPropertyRelative("m_EnableAutocomplete");
+                _commandShowPopupDisplayProperty = _commandWindowProperty.FindPropertyRelative("m_ShowPopupDisplay");
+                _commandStoreCommandHistoryProperty = _commandWindowProperty.FindPropertyRelative("m_StoreCommandHistory");
+                _commandMaxStoredLogsProperty = _commandWindowProperty.FindPropertyRelative("m_MaxStoredLogs");
+                _commandSubmitKeyProperty = _commandWindowProperty.FindPropertyRelative("m_SubmitCommandKey");
+                _commandNextSuggestionKeyProperty = _commandWindowProperty.FindPropertyRelative("m_SelectNextSuggestionKey");
+                _commandPreviousSuggestionKeyProperty = _commandWindowProperty.FindPropertyRelative("m_SelectPreviousSuggestionKey");
+                _commandNextHistoryKeyProperty = _commandWindowProperty.FindPropertyRelative("m_NextCommandKey");
+                _commandPreviousHistoryKeyProperty = _commandWindowProperty.FindPropertyRelative("m_PreviousCommandKey");
+                _commandCancelActionsKeyProperty = _commandWindowProperty.FindPropertyRelative("m_CancelActionsKey");
+            }
+
             _activeWindowOptions = _activeWindowProperty.enumDisplayNames;
         }
 
@@ -68,8 +98,73 @@ namespace AlicizaX.Debugger.Editor
             DrawFontRow();
             DrawToggleRow("Enable Snap", _enableFloatingToggleSnapProperty);
             DrawOpacityRow();
+            DrawCommandSettings();
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawCommandSettings()
+        {
+            if (_commandWindowProperty == null)
+            {
+                return;
+            }
+
+            EditorGUILayout.Space(4f);
+            _commandFoldout = EditorGUILayout.Foldout(_commandFoldout, "Command Tab", true);
+            if (!_commandFoldout)
+            {
+                return;
+            }
+
+            EditorGUI.indentLevel++;
+            if (_commandAssemblyNamesProperty != null)
+            {
+                EditorGUILayout.PropertyField(_commandAssemblyNamesProperty, new GUIContent("Command Assemblies"), true);
+            }
+
+            DrawNestedToggle("Autocomplete", _commandEnableAutocompleteProperty);
+            DrawNestedToggle("Suggestion Popup", _commandShowPopupDisplayProperty);
+            DrawNestedToggle("Command History", _commandStoreCommandHistoryProperty);
+
+            if (_commandMaxStoredLogsProperty != null)
+            {
+                EditorGUILayout.BeginHorizontal(_fieldRowStyle);
+                EditorGUILayout.LabelField("Max Stored Logs", _fieldLabelStyle, GUILayout.Width(RowLabelWidth));
+                _commandMaxStoredLogsProperty.intValue = EditorGUILayout.IntField(_commandMaxStoredLogsProperty.intValue);
+                EditorGUILayout.EndHorizontal();
+            }
+
+            DrawNestedProperty("Submit Key", _commandSubmitKeyProperty);
+            DrawNestedProperty("Next Suggestion", _commandNextSuggestionKeyProperty);
+            DrawNestedProperty("Prev Suggestion", _commandPreviousSuggestionKeyProperty);
+            DrawNestedProperty("Next History", _commandNextHistoryKeyProperty);
+            DrawNestedProperty("Prev History", _commandPreviousHistoryKeyProperty);
+            DrawNestedProperty("Cancel Actions", _commandCancelActionsKeyProperty);
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawNestedToggle(string label, SerializedProperty property)
+        {
+            if (property == null)
+            {
+                return;
+            }
+
+            DrawToggleRow(label, property);
+        }
+
+        private void DrawNestedProperty(string label, SerializedProperty property)
+        {
+            if (property == null)
+            {
+                return;
+            }
+
+            EditorGUILayout.BeginHorizontal(_fieldRowStyle);
+            EditorGUILayout.LabelField(label, _fieldLabelStyle, GUILayout.Width(RowLabelWidth));
+            EditorGUILayout.PropertyField(property, GUIContent.none, true);
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawToolbar(string title)

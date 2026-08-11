@@ -41,7 +41,10 @@ namespace AlicizaX.Debugger
         private const float ToggleDoubleClickMaxDistance = 24f;
         private const float ToggleSnapSmoothTime = 0.08f;
         private const float ToggleSnapStopDistance = 0.5f;
-        private const float SidebarIndentWidth = 14f;
+        private const float SidebarRowRadius = 8f;
+        private const float SidebarRowGap = 3f;
+        private const float SidebarSectionGap = 10f;
+        private const float SidebarTreeGuideInset = 17f;
 
         private static DebuggerComponent _instance;
 
@@ -66,6 +69,7 @@ namespace AlicizaX.Debugger
         [SerializeField] private FontAsset m_FontAsset;
         [SerializeField] private Font m_Font;
         [SerializeField] private ConsoleWindow m_ConsoleWindow = new ConsoleWindow();
+        [SerializeField] private CommandWindow m_CommandWindow = new CommandWindow();
 
         private readonly List<DebuggerMenuNode> _menuRoots = new List<DebuggerMenuNode>(16);
         private readonly List<IDebuggerWindow> _registeredWindows = new List<IDebuggerWindow>(32);
@@ -105,8 +109,11 @@ namespace AlicizaX.Debugger
         private TimerInformationWindow m_TimerInformationWindow = new TimerInformationWindow();
         private SettingsWindow m_SettingsWindow = new SettingsWindow();
         private FpsCounter m_FpsCounter;
+        private StatsOverlay m_StatsOverlay;
 
         private PanelSettings _panelSettings;
+        private PanelTextSettings _panelTextSettings;
+        private Font _runtimeSystemFont;
         private UIDocument _uiDocument;
         private EventSystem _createdEventSystem;
         private VisualElement _root;
@@ -325,6 +332,7 @@ namespace AlicizaX.Debugger
             }
 
             m_FpsCounter = new FpsCounter(0.5f);
+            m_StatsOverlay = new StatsOverlay(this);
             LoadLayoutSettings();
             EnsureRuntimePanel();
         }
@@ -376,9 +384,13 @@ namespace AlicizaX.Debugger
                 m_FpsCounter.Update(Time.deltaTime, Time.unscaledDeltaTime);
             }
 
+            m_StatsOverlay?.Tick(Time.unscaledDeltaTime);
+
             UpdateToggleState();
             UpdateToggleSnapAnimation(Time.unscaledDeltaTime);
             HandleScreenSizeChanged();
+
+            m_CommandWindow?.TickRuntime();
 
             if (_mDebuggerService == null || !_mDebuggerService.ActiveWindow)
             {
@@ -421,6 +433,12 @@ namespace AlicizaX.Debugger
             _sidebarChildContainers.Clear();
             _menuRoots.Clear();
 
+            if (m_StatsOverlay != null)
+            {
+                m_StatsOverlay.Dispose();
+                m_StatsOverlay = null;
+            }
+
             if (_uiDocument != null)
             {
                 Destroy(_uiDocument);
@@ -431,6 +449,18 @@ namespace AlicizaX.Debugger
             {
                 Destroy(_panelSettings);
                 _panelSettings = null;
+            }
+
+            if (_panelTextSettings != null)
+            {
+                Destroy(_panelTextSettings);
+                _panelTextSettings = null;
+            }
+
+            if (_runtimeSystemFont != null)
+            {
+                Destroy(_runtimeSystemFont);
+                _runtimeSystemFont = null;
             }
 
             if (_createdEventSystem != null)
@@ -632,6 +662,7 @@ namespace AlicizaX.Debugger
         private void RegisterBuiltInWindows()
         {
             RegisterDebuggerWindow("Console", m_ConsoleWindow);
+            RegisterDebuggerWindow("Command", m_CommandWindow);
             RegisterDebuggerWindow("Information/System", m_SystemInformationWindow);
             RegisterDebuggerWindow("Information/Environment", m_EnvironmentInformationWindow);
             RegisterDebuggerWindow("Information/Screen", m_ScreenInformationWindow);
@@ -711,7 +742,7 @@ namespace AlicizaX.Debugger
             return fallback;
         }
 
-        private static void ApplyRuntimePanelSettings(PanelSettings panelSettings)
+        private void ApplyRuntimePanelSettings(PanelSettings panelSettings)
         {
             if (panelSettings == null)
             {
@@ -725,6 +756,204 @@ namespace AlicizaX.Debugger
             panelSettings.fallbackDpi = 96f;
             panelSettings.clearColor = false;
             panelSettings.targetTexture = null;
+            panelSettings.textSettings = EnsureSafePanelTextSettings();
+        }
+
+        private PanelTextSettings EnsureSafePanelTextSettings()
+        {
+            if (_panelTextSettings == null)
+            {
+                _panelTextSettings = ScriptableObject.CreateInstance<PanelTextSettings>();
+                _panelTextSettings.name = "Debugger Runtime Panel TextSettings";
+                _panelTextSettings.hideFlags = HideFlags.HideAndDontSave;
+            }
+
+            FontAsset safeFont = ResolveSafeFontAsset();
+            if (safeFont != null)
+            {
+                _panelTextSettings.defaultFontAsset = safeFont;
+            }
+
+            _panelTextSettings.fallbackFontAssets = new System.Collections.Generic.List<FontAsset>();
+            return _panelTextSettings;
+        }
+
+        private FontAsset ResolveSafeFontAsset()
+        {
+            if (IsFontAssetUsable(m_FontAsset))
+            {
+                return m_FontAsset;
+            }
+
+            return null;
+        }
+
+        private Font ResolveRuntimeFont()
+        {
+            if (m_Font != null)
+            {
+                return m_Font;
+            }
+
+            if (_runtimeSystemFont != null)
+            {
+                return _runtimeSystemFont;
+            }
+
+            _runtimeSystemFont = CreateSystemFallbackFont();
+            return _runtimeSystemFont;
+        }
+
+        private static Font CreateSystemFallbackFont()
+        {
+            string[] candidates;
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            candidates = new[]
+            {
+                "Segoe UI",
+                "Microsoft YaHei UI",
+                "Microsoft YaHei",
+                "Arial",
+                "Tahoma",
+            };
+#elif UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX || UNITY_IOS
+            candidates = new[]
+            {
+                "PingFang SC",
+                "Hiragino Sans GB",
+                "Helvetica Neue",
+                "Helvetica",
+                "Arial",
+            };
+#elif UNITY_ANDROID
+            candidates = new[]
+            {
+                "Roboto",
+                "Noto Sans CJK SC",
+                "Droid Sans Fallback",
+                "Arial",
+            };
+#else
+            candidates = new[]
+            {
+                "Arial",
+                "Helvetica",
+                "Roboto",
+                "Sans-Serif",
+            };
+#endif
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                try
+                {
+                    Font font = Font.CreateDynamicFontFromOSFont(candidates[i], 16);
+                    if (font != null)
+                    {
+                        font.hideFlags = HideFlags.HideAndDontSave;
+                        font.name = "Debugger System Font (" + candidates[i] + ")";
+                        return font;
+                    }
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            try
+            {
+                string[] names = Font.GetOSInstalledFontNames();
+                if (names != null)
+                {
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        string name = names[i];
+                        if (string.IsNullOrEmpty(name))
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            Font font = Font.CreateDynamicFontFromOSFont(name, 16);
+                            if (font != null)
+                            {
+                                font.hideFlags = HideFlags.HideAndDontSave;
+                                font.name = "Debugger System Font (" + name + ")";
+                                return font;
+                            }
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            Font builtin = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            return builtin;
+        }
+
+        internal static bool IsFontAssetUsable(FontAsset fontAsset)
+        {
+            if (fontAsset == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                Texture2D[] atlases = fontAsset.atlasTextures;
+                if (atlases == null || atlases.Length == 0)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < atlases.Length; i++)
+                {
+                    Texture2D atlas = atlases[i];
+                    if (atlas == null)
+                    {
+                        return false;
+                    }
+
+                    _ = atlas.name;
+                    if (atlas.width <= 0 || atlas.height <= 0)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch (MissingReferenceException)
+            {
+                return false;
+            }
+            catch (UnityException)
+            {
+                return false;
+            }
+        }
+
+        internal StyleFontDefinition ResolveFontDefinition()
+        {
+            FontAsset safeFontAsset = ResolveSafeFontAsset();
+            if (safeFontAsset != null)
+            {
+                return new StyleFontDefinition(safeFontAsset);
+            }
+
+            Font runtimeFont = ResolveRuntimeFont();
+            if (runtimeFont != null)
+            {
+                return new StyleFontDefinition(FontDefinition.FromFont(runtimeFont));
+            }
+
+            return new StyleFontDefinition(StyleKeyword.Null);
         }
 
         private void EnsureEventSystem()
@@ -758,6 +987,11 @@ namespace AlicizaX.Debugger
             _root.Add(_toggleButton);
             _root.Add(_overlay);
 
+            if (m_StatsOverlay != null)
+            {
+                m_StatsOverlay.Attach(_root);
+            }
+
             _lastScreenWidth = Screen.width;
             _lastScreenHeight = Screen.height;
             ApplyToggleRect();
@@ -767,6 +1001,23 @@ namespace AlicizaX.Debugger
             ApplyFont();
             UpdateToggleState();
         }
+
+        public void SetStatsOverlayVisible(bool visible)
+        {
+            if (m_StatsOverlay == null)
+            {
+                m_StatsOverlay = new StatsOverlay(this);
+            }
+
+            if (visible && _root != null)
+            {
+                m_StatsOverlay.Attach(_root);
+            }
+
+            m_StatsOverlay.Visible = visible;
+        }
+
+        public bool IsStatsOverlayVisible => m_StatsOverlay != null && m_StatsOverlay.Visible;
 
         private static void InitializePanelSettingsDefaults(PanelSettings panelSettings)
         {
@@ -977,7 +1228,7 @@ namespace AlicizaX.Debugger
             _sidebarScrollView.style.minHeight = 0f;
             _sidebarScrollView.style.paddingLeft = 10f * scale;
             _sidebarScrollView.style.paddingRight = 8f * scale;
-            _sidebarScrollView.style.paddingTop = 12f * scale;
+            _sidebarScrollView.style.paddingTop = 10f * scale;
             _sidebarScrollView.style.paddingBottom = 12f * scale;
             _sidebarScrollView.contentContainer.style.flexDirection = FlexDirection.Column;
             _sidebarScrollView.mouseWheelScrollSize = 240f * scale;
@@ -1160,66 +1411,75 @@ namespace AlicizaX.Debugger
 
             float scale = GetUiScale();
             bool hasChildren = node.Children.Count > 0;
-            bool isActive = IsNodeActive(node);
-            bool isExpanded = hasChildren && (node.Expanded || isActive);
+            bool isGroup = hasChildren;
+            bool isSelected = ReferenceEquals(_activeNode, node);
+            bool isAncestorOfActive = !isSelected && IsNodeActive(node);
+            bool isExpanded = hasChildren && (node.Expanded || isSelected || isAncestorOfActive);
 
             VisualElement row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
             row.style.alignItems = Align.Center;
-            row.style.height = 36f * scale;
-            row.style.minHeight = 36f * scale;
-            row.style.paddingLeft = 10f * scale + depth * SidebarIndentWidth * scale;
-            row.style.paddingRight = 10f * scale;
-            row.style.marginBottom = 0f;
-            row.style.borderTopLeftRadius = 0f;
-            row.style.borderTopRightRadius = 0f;
-            row.style.borderBottomLeftRadius = 0f;
-            row.style.borderBottomRightRadius = 0f;
-            row.style.backgroundColor = isActive ? DebuggerTheme.SidebarRowSelected : DebuggerTheme.SidebarRow;
+            row.style.height = (isGroup && depth == 0 ? 34f : 32f) * scale;
+            row.style.minHeight = row.style.height;
+            row.style.paddingLeft = 8f * scale;
+            row.style.paddingRight = 8f * scale;
+            row.style.marginTop = depth == 0 && parent.childCount > 0 ? SidebarSectionGap * scale : 0f;
+            row.style.marginBottom = SidebarRowGap * scale;
+            row.style.borderTopLeftRadius = SidebarRowRadius * scale;
+            row.style.borderTopRightRadius = SidebarRowRadius * scale;
+            row.style.borderBottomLeftRadius = SidebarRowRadius * scale;
+            row.style.borderBottomRightRadius = SidebarRowRadius * scale;
+            row.style.backgroundColor = isSelected ? DebuggerTheme.SidebarRowSelected : DebuggerTheme.SidebarRow;
             row.style.borderLeftWidth = 3f * scale;
-            row.style.borderLeftColor = isActive ? DebuggerTheme.Accent : Color.clear;
+            row.style.borderLeftColor = isSelected || isAncestorOfActive ? DebuggerTheme.Accent : Color.clear;
             row.style.borderTopWidth = 0f;
             row.style.borderRightWidth = 0f;
             row.style.borderBottomWidth = 0f;
             row.style.flexShrink = 0f;
             row.pickingMode = PickingMode.Position;
 
-            Label titleLabel = new Label(node.DisplayName);
-            titleLabel.style.flexGrow = 1f;
-            titleLabel.style.minWidth = 0f;
-            titleLabel.style.fontSize = 17f * scale;
-            titleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-            titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
-            titleLabel.style.color = isActive ? DebuggerTheme.PrimaryText : DebuggerTheme.SecondaryText;
-            titleLabel.pickingMode = PickingMode.Ignore;
-            row.Add(titleLabel);
-
             Button expander = null;
-
             if (hasChildren)
             {
-                expander = ScrollableDebuggerWindowBase.CreateGhostButton(isExpanded ? "v" : ">");
-                expander.style.width = 18f * scale;
-                expander.style.minWidth = 18f * scale;
-                expander.style.height = 28f * scale;
-                expander.style.minHeight = 28f * scale;
-                expander.style.paddingLeft = 0f;
-                expander.style.paddingRight = 0f;
-                expander.style.marginLeft = 6f * scale;
-                expander.style.fontSize = 14f * scale;
-                expander.style.color = isActive ? DebuggerTheme.PrimaryText : DebuggerTheme.SecondaryText;
-                expander.style.unityTextAlign = TextAnchor.MiddleCenter;
+                expander = CreateSidebarExpander(scale, isExpanded);
                 expander.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
                 expander.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
                 row.Add(expander);
             }
+            else
+            {
+                VisualElement spacer = new VisualElement();
+                spacer.style.width = 22f * scale;
+                spacer.style.minWidth = 22f * scale;
+                spacer.style.height = 1f;
+                spacer.pickingMode = PickingMode.Ignore;
+                row.Add(spacer);
+            }
+
+            Label titleLabel = new Label(node.DisplayName);
+            titleLabel.style.flexGrow = 1f;
+            titleLabel.style.minWidth = 0f;
+            titleLabel.style.fontSize = (isGroup && depth == 0 ? 14f : 15f) * scale;
+            titleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            titleLabel.style.overflow = Overflow.Hidden;
+            titleLabel.style.textOverflow = TextOverflow.Ellipsis;
+            titleLabel.style.color = isSelected
+                ? DebuggerTheme.PrimaryText
+                : isGroup
+                    ? DebuggerTheme.SidebarGroupText
+                    : DebuggerTheme.SecondaryText;
+            titleLabel.style.unityFontStyleAndWeight = isGroup || isSelected ? FontStyle.Bold : FontStyle.Normal;
+            titleLabel.style.letterSpacing = isGroup && depth == 0 ? 0.4f : 0f;
+            titleLabel.pickingMode = PickingMode.Ignore;
+            row.Add(titleLabel);
 
             row.AddManipulator(new Clickable(() => SelectWindowNode(node)));
-            SidebarRowState state = new SidebarRowState(row, titleLabel, expander, scale, isActive);
+            SidebarRowState state = new SidebarRowState(row, titleLabel, expander, scale, isSelected, isAncestorOfActive, isGroup, isExpanded);
             _sidebarRowStates[node] = state;
 
             parent.Add(row);
-            if (isActive)
+            if (isSelected)
             {
                 _activeSidebarElement = row;
             }
@@ -1232,20 +1492,125 @@ namespace AlicizaX.Debugger
             VisualElement childContainer = new VisualElement();
             childContainer.style.flexDirection = FlexDirection.Column;
             childContainer.style.display = isExpanded ? DisplayStyle.Flex : DisplayStyle.None;
+            childContainer.style.marginLeft = SidebarTreeGuideInset * scale;
+            childContainer.style.paddingLeft = 8f * scale;
+            childContainer.style.borderLeftWidth = 1f * scale;
+            childContainer.style.borderLeftColor = DebuggerTheme.SidebarTreeGuide;
+            childContainer.style.marginBottom = SidebarRowGap * scale;
             _sidebarChildContainers[node] = childContainer;
             parent.Add(childContainer);
 
-            expander.clicked += () =>
-            {
-                node.Expanded = !node.Expanded;
-                bool nowExpanded = node.Expanded;
-                childContainer.style.display = nowExpanded ? DisplayStyle.Flex : DisplayStyle.None;
-                expander.text = nowExpanded ? "v" : ">";
-            };
+            expander.clicked += () => ToggleMenuNodeExpanded(node);
 
             for (int i = 0; i < node.Children.Count; i++)
             {
                 AddMenuNode(node.Children[i], depth + 1, childContainer);
+            }
+        }
+
+        private static Button CreateSidebarExpander(float scale, bool expanded)
+        {
+            Button expander = new Button();
+            expander.text = string.Empty;
+            expander.style.width = 18f * scale;
+            expander.style.minWidth = 18f * scale;
+            expander.style.height = 24f * scale;
+            expander.style.minHeight = 24f * scale;
+            expander.style.paddingLeft = 0f;
+            expander.style.paddingRight = 0f;
+            expander.style.paddingTop = 0f;
+            expander.style.paddingBottom = 0f;
+            expander.style.marginRight = 4f * scale;
+            expander.style.marginLeft = 0f;
+            expander.style.backgroundColor = Color.clear;
+            expander.style.borderTopWidth = 0f;
+            expander.style.borderRightWidth = 0f;
+            expander.style.borderBottomWidth = 0f;
+            expander.style.borderLeftWidth = 0f;
+            expander.style.borderTopLeftRadius = 4f * scale;
+            expander.style.borderTopRightRadius = 4f * scale;
+            expander.style.borderBottomLeftRadius = 4f * scale;
+            expander.style.borderBottomRightRadius = 4f * scale;
+            expander.style.alignItems = Align.Center;
+            expander.style.justifyContent = Justify.Center;
+            expander.focusable = false;
+
+            VisualElement icon = new VisualElement();
+            icon.name = "sidebar-chevron";
+            icon.pickingMode = PickingMode.Ignore;
+            expander.Add(icon);
+            ApplySidebarChevronIcon(icon, scale, expanded, DebuggerTheme.SecondaryText);
+
+            ScrollableDebuggerWindowBase.ApplyButtonStateStyles(
+                expander,
+                Color.clear,
+                DebuggerTheme.GhostHover,
+                DebuggerTheme.GhostPressed,
+                DebuggerTheme.PrimaryText,
+                DebuggerTheme.PrimaryText,
+                DebuggerTheme.PrimaryText);
+
+            return expander;
+        }
+
+        private static void ApplySidebarChevronIcon(VisualElement icon, float scale, bool expanded, Color color)
+        {
+            if (icon == null)
+            {
+                return;
+            }
+
+            float half = 3.5f * scale;
+            float full = 5.5f * scale;
+            icon.style.width = 0f;
+            icon.style.height = 0f;
+            icon.style.backgroundColor = Color.clear;
+            icon.style.marginLeft = 0f;
+            icon.style.marginRight = 0f;
+            icon.style.marginTop = 0f;
+            icon.style.marginBottom = 0f;
+
+            if (expanded)
+            {
+                icon.style.borderLeftWidth = half;
+                icon.style.borderRightWidth = half;
+                icon.style.borderTopWidth = full;
+                icon.style.borderBottomWidth = 0f;
+                icon.style.borderLeftColor = Color.clear;
+                icon.style.borderRightColor = Color.clear;
+                icon.style.borderTopColor = color;
+                icon.style.borderBottomColor = Color.clear;
+            }
+            else
+            {
+                icon.style.borderLeftWidth = full;
+                icon.style.borderRightWidth = 0f;
+                icon.style.borderTopWidth = half;
+                icon.style.borderBottomWidth = half;
+                icon.style.borderLeftColor = color;
+                icon.style.borderRightColor = Color.clear;
+                icon.style.borderTopColor = Color.clear;
+                icon.style.borderBottomColor = Color.clear;
+            }
+        }
+
+        private void ToggleMenuNodeExpanded(DebuggerMenuNode node)
+        {
+            if (node == null || node.Children.Count <= 0)
+            {
+                return;
+            }
+
+            node.Expanded = !node.Expanded;
+            bool nowExpanded = node.Expanded;
+            if (_sidebarChildContainers.TryGetValue(node, out VisualElement container))
+            {
+                container.style.display = nowExpanded ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state))
+            {
+                state.SetExpanded(nowExpanded);
             }
         }
 
@@ -1259,9 +1624,10 @@ namespace AlicizaX.Debugger
             _activeSidebarElement = null;
             foreach (KeyValuePair<DebuggerMenuNode, SidebarRowState> pair in _sidebarRowStates)
             {
-                bool isActive = IsNodeActive(pair.Key);
-                pair.Value.SetActive(isActive);
-                if (isActive)
+                bool isSelected = ReferenceEquals(_activeNode, pair.Key);
+                bool isAncestorOfActive = !isSelected && IsNodeActive(pair.Key);
+                pair.Value.SetActive(isSelected, isAncestorOfActive);
+                if (isSelected)
                 {
                     _activeSidebarElement = pair.Value.Row;
                 }
@@ -1307,15 +1673,7 @@ namespace AlicizaX.Debugger
 
             if (node.Window == null)
             {
-                node.Expanded = !node.Expanded;
-                if (_sidebarChildContainers.TryGetValue(node, out VisualElement container))
-                {
-                    container.style.display = node.Expanded ? DisplayStyle.Flex : DisplayStyle.None;
-                    if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state) && state.Expander != null)
-                    {
-                        state.Expander.text = node.Expanded ? "v" : ">";
-                    }
-                }
+                ToggleMenuNodeExpanded(node);
                 return true;
             }
 
@@ -1392,9 +1750,9 @@ namespace AlicizaX.Debugger
                     {
                         container.style.display = DisplayStyle.Flex;
                     }
-                    if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state) && state.Expander != null)
+                    if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state))
                     {
-                        state.Expander.text = "v";
+                        state.SetExpanded(true);
                     }
                 }
 
@@ -1506,20 +1864,12 @@ namespace AlicizaX.Debugger
                 return;
             }
 
-            if (m_FontAsset != null)
+            StyleFontDefinition fontDefinition = ResolveFontDefinition();
+            _root.style.unityFontDefinition = fontDefinition;
+            if (fontDefinition.keyword == StyleKeyword.Null)
             {
-                _root.style.unityFontDefinition = new StyleFontDefinition(m_FontAsset);
-                return;
+                _root.style.unityFont = new StyleFont(StyleKeyword.Null);
             }
-
-            if (m_Font != null)
-            {
-                _root.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(m_Font));
-                return;
-            }
-
-            _root.style.unityFontDefinition = new StyleFontDefinition(StyleKeyword.Null);
-            _root.style.unityFont = new StyleFont(StyleKeyword.Null);
         }
 
         private void CloseToFloatingEntry()
@@ -1948,18 +2298,34 @@ namespace AlicizaX.Debugger
         private sealed class SidebarRowState
         {
             private readonly Label _titleLabel;
+            private readonly VisualElement _chevronIcon;
             private readonly float _scale;
-            private bool _isActive;
+            private readonly bool _isGroup;
+            private bool _isSelected;
+            private bool _isAncestorOfActive;
+            private bool _isExpanded;
             private bool _isHovered;
             private bool _isPressed;
 
-            public SidebarRowState(VisualElement row, Label titleLabel, Button expander, float scale, bool isActive)
+            public SidebarRowState(
+                VisualElement row,
+                Label titleLabel,
+                Button expander,
+                float scale,
+                bool isSelected,
+                bool isAncestorOfActive,
+                bool isGroup,
+                bool isExpanded)
             {
                 Row = row;
                 _titleLabel = titleLabel;
                 Expander = expander;
+                _chevronIcon = expander != null ? expander.Q("sidebar-chevron") : null;
                 _scale = scale;
-                _isActive = isActive;
+                _isSelected = isSelected;
+                _isAncestorOfActive = isAncestorOfActive;
+                _isGroup = isGroup;
+                _isExpanded = isExpanded;
                 RegisterCallbacks();
                 Apply();
             }
@@ -1968,15 +2334,16 @@ namespace AlicizaX.Debugger
 
             public Button Expander { get; }
 
-            public void SetActive(bool isActive)
+            public void SetActive(bool isSelected, bool isAncestorOfActive)
             {
-                if (_isActive == isActive)
-                {
-                    Apply();
-                    return;
-                }
+                _isSelected = isSelected;
+                _isAncestorOfActive = isAncestorOfActive;
+                Apply();
+            }
 
-                _isActive = isActive;
+            public void SetExpanded(bool expanded)
+            {
+                _isExpanded = expanded;
                 Apply();
             }
 
@@ -2018,21 +2385,43 @@ namespace AlicizaX.Debugger
 
             private void Apply()
             {
+                bool showSelectedFill = _isSelected;
                 Row.style.backgroundColor = _isPressed
-                    ? _isActive ? DebuggerTheme.SidebarRowSelectedPressed : DebuggerTheme.SidebarRowPressed
+                    ? showSelectedFill ? DebuggerTheme.SidebarRowSelectedPressed : DebuggerTheme.SidebarRowPressed
                     : _isHovered
-                        ? _isActive ? DebuggerTheme.SidebarRowSelectedHover : DebuggerTheme.SidebarRowHover
-                        : _isActive ? DebuggerTheme.SidebarRowSelected : DebuggerTheme.SidebarRow;
+                        ? showSelectedFill ? DebuggerTheme.SidebarRowSelectedHover : DebuggerTheme.SidebarRowHover
+                        : showSelectedFill ? DebuggerTheme.SidebarRowSelected : DebuggerTheme.SidebarRow;
                 Row.style.borderLeftWidth = 3f * _scale;
-                Row.style.borderLeftColor = _isActive ? DebuggerTheme.Accent : Color.clear;
+                Row.style.borderLeftColor = _isSelected || _isAncestorOfActive
+                    ? DebuggerTheme.Accent
+                    : Color.clear;
 
-                Color textColor = _isActive || _isHovered ? DebuggerTheme.PrimaryText : DebuggerTheme.SecondaryText;
-                _titleLabel.style.color = textColor;
-                _titleLabel.style.unityFontStyleAndWeight = _isActive ? FontStyle.Bold : FontStyle.Normal;
-
-                if (Expander != null)
+                Color textColor;
+                if (_isSelected || _isHovered)
                 {
-                    Expander.style.color = textColor;
+                    textColor = DebuggerTheme.PrimaryText;
+                }
+                else if (_isAncestorOfActive)
+                {
+                    textColor = DebuggerTheme.PrimaryText;
+                }
+                else if (_isGroup)
+                {
+                    textColor = DebuggerTheme.SidebarGroupText;
+                }
+                else
+                {
+                    textColor = DebuggerTheme.SecondaryText;
+                }
+
+                _titleLabel.style.color = textColor;
+                _titleLabel.style.unityFontStyleAndWeight = _isGroup || _isSelected || _isAncestorOfActive
+                    ? FontStyle.Bold
+                    : FontStyle.Normal;
+
+                if (_chevronIcon != null)
+                {
+                    ApplySidebarChevronIcon(_chevronIcon, _scale, _isExpanded, textColor);
                 }
             }
         }

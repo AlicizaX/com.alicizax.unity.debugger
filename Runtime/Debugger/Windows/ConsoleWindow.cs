@@ -354,21 +354,22 @@ namespace AlicizaX.Debugger
             {
                 float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
                 Label label = new Label();
-                if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                if (DebuggerComponent.Instance != null)
                 {
-                    label.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
-                }
-                else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
-                {
-                    label.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                    label.style.unityFontDefinition = DebuggerComponent.Instance.ResolveFontDefinition();
                 }
 
                 label.style.height = 36f * scale;
+                label.style.flexGrow = 1f;
+                label.style.flexShrink = 1f;
+                label.style.minWidth = 0f;
                 label.style.unityTextAlign = TextAnchor.MiddleLeft;
                 label.style.paddingLeft = 10f * scale;
                 label.style.paddingRight = 8f * scale;
                 label.style.fontSize = 17f * scale;
                 label.style.whiteSpace = WhiteSpace.NoWrap;
+                label.style.overflow = Overflow.Hidden;
+                label.style.textOverflow = TextOverflow.Ellipsis;
                 label.style.borderLeftWidth = 3f * scale;
                 label.style.borderLeftColor = Color.clear;
                 label.style.borderBottomWidth = 0f;
@@ -729,7 +730,13 @@ namespace AlicizaX.Debugger
 
             private string GetLogString(LogNode logNode)
             {
-                return Utility.Text.Format("[{0:HH:mm:ss.fff}][{1}] {2}", logNode.LogTime.ToLocalTime(), logNode.LogFrameCount, logNode.LogMessage);
+                string message = logNode.LogMessage ?? string.Empty;
+                if (message.IndexOf('\n') >= 0 || message.IndexOf('\r') >= 0)
+                {
+                    message = message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+                }
+
+                return Utility.Text.Format("[{0:HH:mm:ss.fff}][{1}] {2}", logNode.LogTime.ToLocalTime(), logNode.LogFrameCount, message);
             }
 
             internal Color GetLogStringColor(LogType logType)

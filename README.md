@@ -1,27 +1,23 @@
 # Aliciza X Debugger
 
-`com.alicizax.unity.debugger` 提供两套运行时调试能力：
+`com.alicizax.unity.debugger` 提供统一的运行时调试面板：
 
-- `AlicizaX.Debugger.DebuggerComponent`：基于 UI Toolkit 的运行时调试面板，用于查看日志、系统信息、场景信息、Profiler、运行时内存、对象池、引用池、Audio、Timer 等信息，也支持注册自定义调试窗口。
-- `AlicizaX.Console.AlicizaXConsoleUITK`：基于 UI Toolkit 的命令控制台，用于输入、补全、执行 `[Command]` 命令，支持宏、命令历史、异步命令、外部脚本和 Unity 日志拦截。
+- `AlicizaX.Debugger.DebuggerComponent`：基于 UI Toolkit 的运行时调试面板，用于查看日志、系统信息、场景信息、Profiler、运行时内存、对象池、引用池、Audio、Timer 等信息，并内置 **Command** 命令控制台选项卡。
+- `AlicizaX.Console` 命令系统：反射扫描 `[Command]`、自动补全、命令历史、异步命令、Action 序列与外部脚本；UI 已整合到 Debugger 的 `Command` 选项卡中。
 
-包内 `Debugger.prefab` 已同时挂载 `UIDocument`、`AlicizaXConsoleUITK` 和 `DebuggerComponent`，推荐直接使用该 prefab 接入。
+包内 `Debugger.prefab` 只挂载 `DebuggerComponent`，推荐直接使用该 prefab 接入。
 
 ## 快速接入
 
 1. 将 `Packages/com.alicizax.unity.debugger/Debugger.prefab` 放入启动场景。
 2. 确认场景中存在框架根节点，并且 `DebuggerComponent` 能注册到 `AppServices.App`。
 3. 运行后：
-   - `DebuggerComponent` 默认显示浮动 FPS 按钮，双击按钮打开完整调试面板，拖动按钮可移动位置。
-   - `AlicizaXConsoleUITK` 默认不会启动时打开，按 prefab 上配置的快捷键 `Alt + Tab` 可切换命令控制台。
+   - 默认显示浮动 FPS 按钮，双击按钮打开完整调试面板。
+   - 在侧边栏选择 `Console` 查看 Unity 日志，选择 `Command` 进入命令控制台。
 
-也可以手动创建 GameObject 并添加：
+也可以手动创建 GameObject 并添加 `AlicizaX.Debugger.DebuggerComponent`。
 
-- `UIDocument`
-- `AlicizaX.Console.AlicizaXConsoleUITK`
-- `AlicizaX.Debugger.DebuggerComponent`
-
-`DebuggerComponent` 会在运行时创建或复用 `EventSystem`，并创建自己的 `PanelSettings` 实例。若未指定 `PanelSettings`，会尝试从 `Resources/DebuggerPanelSettings` 读取，读取失败则创建默认配置。
+`DebuggerComponent` 会在运行时创建或复用 `EventSystem`，并创建自己的 `UIDocument` / `PanelSettings` 实例。若未指定 `PanelSettings`，会尝试从 `Resources/DebuggerPanelSettings` 读取，读取失败则创建默认配置。
 
 ## Debugger 面板
 
@@ -78,7 +74,8 @@ public enum DebuggerActiveWindowType : byte
 
 `DebuggerComponent.Start()` 会注册以下窗口路径：
 
-- `Console`
+- `Console`（Unity 日志查看器）
+- `Command`（命令控制台）
 - `Information/System`
 - `Information/Environment`
 - `Information/Screen`
@@ -264,48 +261,41 @@ public sealed class DebuggerLayoutExample : MonoBehaviour
 
 ## AlicizaX Console 命令控制台
 
-`AlicizaXConsoleUITK` 命名空间为 `AlicizaX.Console`，用于执行反射扫描到的命令。它与 `DebuggerComponent` 的日志 `Console` 窗口不是同一个功能：前者可输入命令，后者只展示 Unity 日志。
+命令控制台已整合为 Debugger 侧边栏的 **`Command`** 选项卡（路径 `"Command"`）。  
+它与日志 **`Console`** 窗口不是同一个功能：`Command` 用于输入/执行 `[Command]`，`Console` 只展示 Unity 日志。
 
-### 控制台快捷键
+命令控制台**不会**拦截 `Debug.Log`；Unity 日志请在 `Console` 选项卡查看。
 
-prefab 默认配置：
+### 控制台快捷键（Command 选项卡内）
 
 | 操作 | 默认值 |
 | --- | --- |
-| 打开 / 关闭控制台 | `Alt + Tab` |
 | 提交命令 | `Return` |
 | 选择下一条建议 | `Tab` |
 | 选择上一条建议 | `Shift + Tab` |
 | 上一条历史命令 | `UpArrow` |
 | 下一条历史命令 | `DownArrow` |
-| 放大 | `Ctrl + =` |
-| 缩小 | `Ctrl + -` |
-| 拖动控制台 | `Shift + Mouse0` |
 | 取消正在执行的 action | `Ctrl + C` |
 
-这些快捷键都可以在 `AlicizaXConsoleUITK` Inspector 中修改。
+这些快捷键可在 `DebuggerComponent` Inspector 的 **Command Tab** 折叠区修改。
 
 ### 程序调用
 
-通过单例或路由器调用：
+通过路由器或命令处理器调用：
 
 ```csharp
 using AlicizaX.Console;
+using AlicizaX.Debugger;
 
-AlicizaXConsoleUITK console = AlicizaXConsoleUITK.Instance;
-console.Activate();
-console.InvokeCommand("help");
-console.LogToConsole("custom message");
-console.ClearConsole();
+// 打开 Debugger 并切到 Command 选项卡
+DebuggerComponent.Instance.ShowFullWindow = true;
+DebuggerComponent.Instance.SelectDebuggerWindow("Command");
 
+// 通过活动控制台写输出 / 清屏
 AlicizaXConsoleRouter.ActiveConsole?.LogToConsole("route message");
-```
+AlicizaXConsoleRouter.ActiveConsole?.ClearConsole();
 
-不依赖 UI 时，可以直接调用命令处理器：
-
-```csharp
-using AlicizaX.Console;
-
+// 不依赖 UI，直接执行命令
 object result = AlicizaXConsoleProcessor.InvokeCommand("command-count");
 ```
 
@@ -313,7 +303,7 @@ object result = AlicizaXConsoleProcessor.InvokeCommand("command-count");
 
 `AlicizaXConsoleProcessor` 默认只扫描程序集 `AlicizaX.Debugger`。
 
-如果自定义命令写在其他 asmdef 中，需要在 `AlicizaXConsoleUITK` 的 `Command Assembly Names` 中加入你的程序集名，例如：
+如果自定义命令写在其他 asmdef 中，需要在 `DebuggerComponent` → **Command Tab** → `Command Assemblies` 中加入你的程序集名，例如：
 
 ```text
 AlicizaX.Debugger
@@ -639,19 +629,15 @@ WebGL 平台不支持外部文件命令。
 | `IDebuggerService.ActiveWindow` | 服务层启用状态 |
 | `IDebuggerService.DebuggerWindowRoot` | 调试窗口根节点 |
 
-### Console
+### Console / Command
 
 | API | 说明 |
 | --- | --- |
-| `AlicizaXConsoleUITK.Instance` | 当前命令控制台实例 |
-| `AlicizaXConsoleUITK.Activate()` | 打开控制台 |
-| `AlicizaXConsoleUITK.Deactivate()` | 关闭控制台 |
-| `AlicizaXConsoleUITK.Toggle()` | 切换控制台 |
-| `AlicizaXConsoleUITK.InvokeCommand(command)` | 执行命令并输出结果 |
-| `AlicizaXConsoleUITK.LogToConsole(text)` | 写入控制台输出 |
-| `AlicizaXConsoleUITK.ClearConsole()` | 清空控制台 |
-| `AlicizaXConsoleUITK.InvokeExternalCommandsAsync(path)` | 执行外部命令文件 |
-| `AlicizaXConsoleRouter.ActiveConsole` | 当前活动控制台 |
+| `DebuggerComponent.SelectDebuggerWindow("Command")` | 打开命令控制台选项卡 |
+| `AlicizaXConsoleRouter.ActiveConsole` | 当前活动控制台（`IAlicizaXConsole`） |
+| `AlicizaXConsoleRouter.ActiveConsole.LogToConsole(text)` | 写入命令输出 |
+| `AlicizaXConsoleRouter.ActiveConsole.ClearConsole()` | 清空命令输出 |
+| `AlicizaXConsoleRouter.ActiveConsole.InvokeExternalCommandsAsync(path)` | 执行外部命令文件 |
 | `AlicizaXConsoleProcessor.GenerateCommandTable(...)` | 生成命令表 |
 | `AlicizaXConsoleProcessor.InvokeCommand(command)` | 不经过 UI 执行命令 |
 | `AlicizaXConsoleProcessor.GetAllCommands()` | 获取所有命令 |
@@ -661,11 +647,11 @@ WebGL 平台不支持外部文件命令。
 
 ## 注意事项
 
-1. `DebuggerComponent` 和 `AlicizaXConsoleUITK` 都使用 UI Toolkit。若挂在同一个 GameObject 上，`DebuggerComponent` 会重建 `UIDocument.rootVisualElement`，可能覆盖同一 `UIDocument` 上已有 UXML。包内 prefab 保持这种组合时，`AlicizaXConsoleUITK` 会在启用时先构建自身 UI，`DebuggerComponent` 随后构建调试面板；如需完全独立显示两套 UI，建议将两者拆到不同 GameObject 和不同 `UIDocument`。
-2. 生产包建议将 `DebuggerComponent.Active Window` 设置为 `OnlyOpenWhenDevelopment`、`OnlyOpenInEditor` 或 `AlwaysClose`，并将 `AlicizaXConsoleUITK.Supported State` 设置为 `Development`、`Editor` 或 `Never`。
-3. 自定义命令所在程序集必须被命令表扫描。最常见做法是在 `AlicizaXConsoleUITK.Command Assembly Names` 中加入你的 asmdef 名称。
+1. 命令控制台已是 Debugger 内置选项卡，不再提供独立浮窗 `AlicizaXConsoleUITK`。
+2. 生产包建议将 `DebuggerComponent.Active Window` 设置为 `OnlyOpenWhenDevelopment`、`OnlyOpenInEditor` 或 `AlwaysClose`。
+3. 自定义命令所在程序集必须被命令表扫描。最常见做法是在 `DebuggerComponent` 的 Command Tab 中加入你的 asmdef 名称。
 4. `[Command]` 别名和 `[CommandPrefix]` 不能包含空格、括号、中括号、大括号和尖括号。
 5. 命令重载按“命令名 + 参数数量”区分；同名同参数数量只会注册一个。
 6. 默认参数会生成多个可调用重载。例如 `Foo(int a, int b = 1)` 会生成 `foo a` 和 `foo a b` 两种签名。
 7. WebGL 不支持后台线程生成命令表，也不支持外部文件命令和宏文件导入导出。
-8. `AlicizaXConsoleUITK` 默认会拦截 `Application.logMessageReceivedThreaded`；如不需要，可在 Inspector 关闭 `Intercept Debug Logger`。
+8. `Command` 选项卡不会拦截 Unity `Debug.Log`；日志请使用 `Console` 选项卡。

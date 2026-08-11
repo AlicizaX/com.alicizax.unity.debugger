@@ -379,13 +379,9 @@ namespace AlicizaX.Debugger
                     isReadOnly = true,
                     value = value ?? string.Empty
                 };
-                if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                if (DebuggerComponent.Instance != null)
                 {
-                    textField.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
-                }
-                else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
-                {
-                    textField.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                    textField.style.unityFontDefinition = DebuggerComponent.Instance.ResolveFontDefinition();
                 }
 
                 textField.style.minHeight = 140f * scale;
@@ -521,8 +517,16 @@ namespace AlicizaX.Debugger
                 scrollView.style.backgroundColor = Color.clear;
                 scrollView.contentContainer.style.backgroundColor = Color.clear;
                 scrollView.mouseWheelScrollSize = 240f * scale;
+                scrollView.horizontalScrollerVisibility = ScrollerVisibility.Auto;
+                scrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
                 StyleScroller(scrollView.verticalScroller, scale);
                 StyleScroller(scrollView.horizontalScroller, scale);
+
+                scrollView.schedule.Execute(() =>
+                {
+                    StyleScroller(scrollView.verticalScroller, scale);
+                    StyleScroller(scrollView.horizontalScroller, scale);
+                }).ExecuteLater(0);
             }
 
             internal static void StyleScrollers(VisualElement root, float scale)
@@ -533,6 +537,10 @@ namespace AlicizaX.Debugger
                 }
 
                 root.Query<Scroller>().ForEach(scroller => StyleScroller(scroller, scale));
+                root.schedule.Execute(() =>
+                {
+                    root.Query<Scroller>().ForEach(scroller => StyleScroller(scroller, scale));
+                }).ExecuteLater(0);
             }
 
             internal static void StyleScroller(Scroller scroller, float scale)
@@ -542,85 +550,168 @@ namespace AlicizaX.Debugger
                     return;
                 }
 
-                const float ThumbRadius = 3f;
+                const float Thickness = 8f;
+                const float ThumbRadius = 4f;
+                const float TrackInset = 2f;
                 bool isHorizontal = scroller.direction == SliderDirection.Horizontal;
+
                 scroller.style.display = DisplayStyle.Flex;
                 scroller.style.visibility = Visibility.Visible;
                 scroller.style.opacity = 1f;
-                scroller.style.width = isHorizontal ? StyleKeyword.Auto : 6f * scale;
-                scroller.style.minWidth = isHorizontal ? 0f : 6f * scale;
-                scroller.style.maxWidth = isHorizontal ? StyleKeyword.None : 6f * scale;
-                scroller.style.height = isHorizontal ? 6f * scale : StyleKeyword.Auto;
-                scroller.style.minHeight = isHorizontal ? 6f * scale : 0f;
-                scroller.style.maxHeight = isHorizontal ? 6f * scale : StyleKeyword.None;
-                scroller.style.marginLeft = 1f * scale;
-                scroller.style.marginRight = 1f * scale;
-                scroller.style.marginTop = 1f * scale;
-                scroller.style.marginBottom = 1f * scale;
-                scroller.style.paddingLeft = 0f;
-                scroller.style.paddingRight = 0f;
-                scroller.style.paddingTop = 0f;
-                scroller.style.paddingBottom = 0f;
                 scroller.style.backgroundColor = Color.clear;
                 scroller.style.borderTopWidth = 0f;
                 scroller.style.borderRightWidth = 0f;
                 scroller.style.borderBottomWidth = 0f;
                 scroller.style.borderLeftWidth = 0f;
-                scroller.style.borderTopLeftRadius = ThumbRadius * scale;
-                scroller.style.borderTopRightRadius = ThumbRadius * scale;
-                scroller.style.borderBottomLeftRadius = ThumbRadius * scale;
-                scroller.style.borderBottomRightRadius = ThumbRadius * scale;
+                scroller.style.paddingLeft = 0f;
+                scroller.style.paddingRight = 0f;
+                scroller.style.paddingTop = 0f;
+                scroller.style.paddingBottom = 0f;
+                scroller.style.marginLeft = isHorizontal ? 4f * scale : 2f * scale;
+                scroller.style.marginRight = isHorizontal ? 4f * scale : 2f * scale;
+                scroller.style.marginTop = isHorizontal ? 2f * scale : 4f * scale;
+                scroller.style.marginBottom = isHorizontal ? 2f * scale : 4f * scale;
+
+                if (isHorizontal)
+                {
+                    scroller.style.width = StyleKeyword.Auto;
+                    scroller.style.minWidth = 0f;
+                    scroller.style.maxWidth = StyleKeyword.None;
+                    scroller.style.height = Thickness * scale;
+                    scroller.style.minHeight = Thickness * scale;
+                    scroller.style.maxHeight = Thickness * scale;
+                }
+                else
+                {
+                    scroller.style.width = Thickness * scale;
+                    scroller.style.minWidth = Thickness * scale;
+                    scroller.style.maxWidth = Thickness * scale;
+                    scroller.style.height = StyleKeyword.Auto;
+                    scroller.style.minHeight = 0f;
+                    scroller.style.maxHeight = StyleKeyword.None;
+                }
 
                 VisualElement lowButton = scroller.Q(className: "unity-scroller__low-button");
                 if (lowButton != null)
                 {
                     lowButton.style.display = DisplayStyle.None;
+                    lowButton.style.width = 0f;
+                    lowButton.style.height = 0f;
+                    lowButton.style.minWidth = 0f;
+                    lowButton.style.minHeight = 0f;
                 }
 
                 VisualElement highButton = scroller.Q(className: "unity-scroller__high-button");
                 if (highButton != null)
                 {
                     highButton.style.display = DisplayStyle.None;
+                    highButton.style.width = 0f;
+                    highButton.style.height = 0f;
+                    highButton.style.minWidth = 0f;
+                    highButton.style.minHeight = 0f;
                 }
 
                 Slider slider = scroller.slider;
-                if (slider != null)
+                if (slider == null)
                 {
-                    slider.style.display = DisplayStyle.Flex;
-                    slider.style.visibility = Visibility.Visible;
-                    slider.style.opacity = 1f;
-                    slider.style.flexGrow = 1f;
-                    slider.style.minHeight = 0f;
-                    slider.style.minWidth = 0f;
-                    slider.style.backgroundColor = Color.clear;
-                    slider.style.borderTopLeftRadius = ThumbRadius * scale;
-                    slider.style.borderTopRightRadius = ThumbRadius * scale;
-                    slider.style.borderBottomLeftRadius = ThumbRadius * scale;
-                    slider.style.borderBottomRightRadius = ThumbRadius * scale;
-                    slider.style.borderTopWidth = 0f;
-                    slider.style.borderRightWidth = 0f;
-                    slider.style.borderBottomWidth = 0f;
-                    slider.style.borderLeftWidth = 0f;
-                    slider.style.paddingLeft = 0f;
-                    slider.style.paddingRight = 0f;
-                    slider.style.paddingTop = 0f;
-                    slider.style.paddingBottom = 0f;
+                    return;
+                }
 
-                    VisualElement dragger = slider.Q(className: "unity-dragger") ?? slider.Q(className: "unity-base-slider__dragger");
-                    if (dragger != null)
+                slider.style.display = DisplayStyle.Flex;
+                slider.style.visibility = Visibility.Visible;
+                slider.style.opacity = 1f;
+                slider.style.flexGrow = 1f;
+                slider.style.minHeight = 0f;
+                slider.style.minWidth = 0f;
+                slider.style.backgroundColor = Color.clear;
+                slider.style.borderTopWidth = 0f;
+                slider.style.borderRightWidth = 0f;
+                slider.style.borderBottomWidth = 0f;
+                slider.style.borderLeftWidth = 0f;
+                slider.style.paddingLeft = isHorizontal ? 0f : TrackInset * scale;
+                slider.style.paddingRight = isHorizontal ? 0f : TrackInset * scale;
+                slider.style.paddingTop = isHorizontal ? TrackInset * scale : 0f;
+                slider.style.paddingBottom = isHorizontal ? TrackInset * scale : 0f;
+                slider.style.marginLeft = 0f;
+                slider.style.marginRight = 0f;
+                slider.style.marginTop = 0f;
+                slider.style.marginBottom = 0f;
+                slider.style.borderTopLeftRadius = ThumbRadius * scale;
+                slider.style.borderTopRightRadius = ThumbRadius * scale;
+                slider.style.borderBottomLeftRadius = ThumbRadius * scale;
+                slider.style.borderBottomRightRadius = ThumbRadius * scale;
+
+                VisualElement tracker = slider.Q(className: "unity-base-slider__tracker")
+                                         ?? slider.Q(className: "unity-base-slider__drag-container")
+                                         ?? slider.Q(className: "unity-tracker");
+                if (tracker != null)
+                {
+                    tracker.style.backgroundColor = DebuggerTheme.ScrollbarTrack;
+                    tracker.style.borderTopWidth = 0f;
+                    tracker.style.borderRightWidth = 0f;
+                    tracker.style.borderBottomWidth = 0f;
+                    tracker.style.borderLeftWidth = 0f;
+                    tracker.style.borderTopLeftRadius = ThumbRadius * scale;
+                    tracker.style.borderTopRightRadius = ThumbRadius * scale;
+                    tracker.style.borderBottomLeftRadius = ThumbRadius * scale;
+                    tracker.style.borderBottomRightRadius = ThumbRadius * scale;
+                    if (isHorizontal)
                     {
-                        dragger.style.display = DisplayStyle.Flex;
-                        dragger.style.visibility = Visibility.Visible;
-                        dragger.style.opacity = 1f;
-                        dragger.style.backgroundColor = DebuggerTheme.ScrollbarThumb;
-                        dragger.style.borderTopLeftRadius = ThumbRadius * scale;
-                        dragger.style.borderTopRightRadius = ThumbRadius * scale;
-                        dragger.style.borderBottomLeftRadius = ThumbRadius * scale;
-                        dragger.style.borderBottomRightRadius = ThumbRadius * scale;
-                        dragger.style.borderTopWidth = 0f;
-                        dragger.style.borderRightWidth = 0f;
-                        dragger.style.borderBottomWidth = 0f;
-                        dragger.style.borderLeftWidth = 0f;
+                        tracker.style.height = (Thickness - TrackInset * 2f) * scale;
+                        tracker.style.minHeight = (Thickness - TrackInset * 2f) * scale;
+                    }
+                    else
+                    {
+                        tracker.style.width = (Thickness - TrackInset * 2f) * scale;
+                        tracker.style.minWidth = (Thickness - TrackInset * 2f) * scale;
+                    }
+                }
+
+                VisualElement dragContainer = slider.Q(className: "unity-base-slider__drag-container");
+                if (dragContainer != null)
+                {
+                    dragContainer.style.backgroundColor = Color.clear;
+                    dragContainer.style.borderTopWidth = 0f;
+                    dragContainer.style.borderRightWidth = 0f;
+                    dragContainer.style.borderBottomWidth = 0f;
+                    dragContainer.style.borderLeftWidth = 0f;
+                }
+
+                VisualElement dragger = slider.Q(className: "unity-base-slider__dragger")
+                                        ?? slider.Q(className: "unity-dragger");
+                if (dragger != null)
+                {
+                    float thumbThickness = Mathf.Max(3f, Thickness - TrackInset * 2f) * scale;
+                    dragger.style.display = DisplayStyle.Flex;
+                    dragger.style.visibility = Visibility.Visible;
+                    dragger.style.opacity = 1f;
+                    dragger.style.backgroundColor = DebuggerTheme.ScrollbarThumb;
+                    dragger.style.borderTopWidth = 0f;
+                    dragger.style.borderRightWidth = 0f;
+                    dragger.style.borderBottomWidth = 0f;
+                    dragger.style.borderLeftWidth = 0f;
+                    dragger.style.borderTopLeftRadius = ThumbRadius * scale;
+                    dragger.style.borderTopRightRadius = ThumbRadius * scale;
+                    dragger.style.borderBottomLeftRadius = ThumbRadius * scale;
+                    dragger.style.borderBottomRightRadius = ThumbRadius * scale;
+                    if (isHorizontal)
+                    {
+                        dragger.style.height = thumbThickness;
+                        dragger.style.minHeight = thumbThickness;
+                        dragger.style.maxHeight = thumbThickness;
+                        dragger.style.minWidth = 18f * scale;
+                    }
+                    else
+                    {
+                        dragger.style.width = thumbThickness;
+                        dragger.style.minWidth = thumbThickness;
+                        dragger.style.maxWidth = thumbThickness;
+                        dragger.style.minHeight = 18f * scale;
+                    }
+
+                    if (dragger.userData as string != "debugger-scrollbar-styled")
+                    {
+                        dragger.userData = "debugger-scrollbar-styled";
                         ApplyButtonStateStyles(
                             dragger,
                             DebuggerTheme.ScrollbarThumb,
@@ -630,6 +721,16 @@ namespace AlicizaX.Debugger
                             DebuggerTheme.PrimaryText,
                             DebuggerTheme.PrimaryText);
                     }
+                }
+
+                VisualElement fill = slider.Q(className: "unity-base-slider__filler");
+                if (fill != null)
+                {
+                    fill.style.backgroundColor = Color.clear;
+                    fill.style.borderTopWidth = 0f;
+                    fill.style.borderRightWidth = 0f;
+                    fill.style.borderBottomWidth = 0f;
+                    fill.style.borderLeftWidth = 0f;
                 }
             }
 
@@ -806,13 +907,9 @@ namespace AlicizaX.Debugger
                 VisualElement input = textField.Q(className: "unity-base-text-field__input") ?? textField.Q(className: "unity-text-field__input");
                 if (input != null)
                 {
-                    if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFontAsset != null)
+                    if (DebuggerComponent.Instance != null)
                     {
-                        input.style.unityFontDefinition = new StyleFontDefinition(DebuggerComponent.Instance.CustomFontAsset);
-                    }
-                    else if (DebuggerComponent.Instance != null && DebuggerComponent.Instance.CustomFont != null)
-                    {
-                        input.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(DebuggerComponent.Instance.CustomFont));
+                        input.style.unityFontDefinition = DebuggerComponent.Instance.ResolveFontDefinition();
                     }
 
                     input.style.backgroundColor = Color.clear;
