@@ -53,7 +53,6 @@ namespace AlicizaX.Debugger
             {
                 VisualElement section = CreateSection("Audio Overview", out VisualElement card);
                 card.Add(CreateRow("Initialized", _serviceInfo.Initialized.ToString()));
-                card.Add(CreateRow("Unity Audio Disabled", _serviceInfo.UnityAudioDisabled.ToString()));
                 card.Add(CreateRow("Enable", _serviceInfo.Enable.ToString()));
                 card.Add(CreateRow("Volume", _serviceInfo.Volume.ToString("F3")));
                 card.Add(CreateRow("Listener", _serviceInfo.Listener != null ? _serviceInfo.Listener.name : "<None>"));
