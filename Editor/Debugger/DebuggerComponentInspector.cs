@@ -39,7 +39,7 @@ namespace AlicizaX.Debugger.Editor
                 CacheProperties();
             }
 
-            AlicizaPanel panel = AlicizaEditorUI.CreatePanel("Debugger Component");
+            AlicizaPanel panel = AlicizaEditorUI.CreatePanel(null);
             root.Add(panel);
             BuildComponentRows(panel.Body);
             BuildCommandSection(panel.Body);
@@ -112,7 +112,7 @@ namespace AlicizaX.Debugger.Editor
                 return;
             }
 
-            var field = new AlicizaEnumField(typeof(DebuggerActiveWindowType), _activeWindow);
+            var field = new AlicizaEnumField(_activeWindow);
             field.AddToClassList("alicia-control--grow");
             AlicizaEditorUI.AddRow(parent, "Active Window", field);
         }
@@ -180,7 +180,7 @@ namespace AlicizaX.Debugger.Editor
                 return;
             }
 
-            var field = new AlicizaEnumField(typeof(KeyCode), property);
+            var field = new AlicizaEnumField(property);
             field.AddToClassList("alicia-control--key");
             AlicizaEditorUI.AddRow(parent, caption, field);
         }

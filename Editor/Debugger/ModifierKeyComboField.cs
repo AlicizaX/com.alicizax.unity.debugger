@@ -6,9 +6,7 @@ using UnityEngine.UIElements;
 
 namespace AlicizaX.Debugger.Editor
 {
-    /// <summary>
-    /// UI Toolkit editor for <see cref="AlicizaX.Console.ModifierKeyCombo"/>.
-    /// </summary>
+
     internal sealed class ModifierKeyComboField : VisualElement
     {
         private AlicizaX.Editor.UIToolkit.AlicizaEnumField _keyField;
@@ -37,7 +35,7 @@ namespace AlicizaX.Debugger.Editor
                 return;
             }
 
-            _keyField = new AlicizaX.Editor.UIToolkit.AlicizaEnumField(typeof(KeyCode), keyProperty);
+            _keyField = new AlicizaX.Editor.UIToolkit.AlicizaEnumField(keyProperty);
             _keyField.AddToClassList("alicia-keycombo__key");
 
             _ctrlToggle = CreateToggle("Ctrl", ctrlProperty);
@@ -96,9 +94,9 @@ namespace AlicizaX.Debugger.Editor
             _shiftToggle?.SetEnabled(enabled);
         }
 
-        private static KeyCode ToKeyCode(Enum value)
+        private static KeyCode ToKeyCode(int value)
         {
-            return value is KeyCode key ? key : KeyCode.None;
+            return (KeyCode)value;
         }
     }
 }
