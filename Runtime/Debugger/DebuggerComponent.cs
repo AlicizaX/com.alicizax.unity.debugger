@@ -103,7 +103,6 @@ namespace AlicizaX.Debugger
         private RuntimeMemoryInformationWindow<Font> m_RuntimeMemoryFontInformationWindow = new RuntimeMemoryInformationWindow<Font>();
         private RuntimeMemoryInformationWindow<TextAsset> m_RuntimeMemoryTextAssetInformationWindow = new RuntimeMemoryInformationWindow<TextAsset>();
         private RuntimeMemoryInformationWindow<ScriptableObject> m_RuntimeMemoryScriptableObjectInformationWindow = new RuntimeMemoryInformationWindow<ScriptableObject>();
-        private ObjectPoolInformationWindow m_ObjectPoolInformationWindow = new ObjectPoolInformationWindow();
         private ReferencePoolInformationWindow m_ReferencePoolInformationWindow = new ReferencePoolInformationWindow();
         private AudioInformationWindow m_AudioInformationWindow = new AudioInformationWindow();
         private TimerInformationWindow m_TimerInformationWindow = new TimerInformationWindow();
@@ -683,7 +682,6 @@ namespace AlicizaX.Debugger
             RegisterDebuggerWindow("Profiler/Memory/Font", m_RuntimeMemoryFontInformationWindow);
             RegisterDebuggerWindow("Profiler/Memory/TextAsset", m_RuntimeMemoryTextAssetInformationWindow);
             RegisterDebuggerWindow("Profiler/Memory/ScriptableObject", m_RuntimeMemoryScriptableObjectInformationWindow);
-            RegisterDebuggerWindow("Profiler/Object Pool", m_ObjectPoolInformationWindow);
             RegisterDebuggerWindow("Profiler/Reference Pool", m_ReferencePoolInformationWindow);
             RegisterDebuggerWindow("Profiler/Audio", m_AudioInformationWindow);
             RegisterDebuggerWindow("Profiler/Timer", m_TimerInformationWindow);

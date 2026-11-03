@@ -32,20 +32,20 @@ namespace AlicizaX.Debugger
                 VisualElement overview = CreateSection("Memory Pool Overview", out VisualElement overviewCard);
                 overviewCard.Add(CreateRow("Pool Type Count", MemoryPool.Count.ToString()));
 
-                int totalUnused = 0;
-                int totalUsing = 0;
-                int totalArrayLen = 0;
+                int totalFree = 0;
+                int totalLeased = 0;
+                int totalCreated = 0;
                 for (int i = 0; i < infoCount; i++)
                 {
                     ref MemoryPoolInfo info = ref m_InfoBuffer[i];
-                    totalUnused += info.UnusedCount;
-                    totalUsing += info.UsingCount;
-                    totalArrayLen += info.PageCapacity;
+                    totalFree += info.FreeCount;
+                    totalLeased += info.LeasedCount;
+                    totalCreated += info.CreatedCount;
                 }
 
-                overviewCard.Add(CreateRow("Total Cached Objects", totalUnused.ToString()));
-                overviewCard.Add(CreateRow("Total In Use", totalUsing.ToString()));
-                overviewCard.Add(CreateRow("Total Page Capacity", totalArrayLen.ToString()));
+                overviewCard.Add(CreateRow("Total Cached Objects", totalFree.ToString()));
+                overviewCard.Add(CreateRow("Total In Use", totalLeased.ToString()));
+                overviewCard.Add(CreateRow("Total Created", totalCreated.ToString()));
 
                 m_ShowFullClassNameToggle = CreateConsoleFilterToggle("Show Full ClassName", m_ShowFullClassName, DebuggerTheme.PrimaryText, OnShowFullClassNameChanged);
                 overviewCard.Add(m_ShowFullClassNameToggle);
@@ -53,7 +53,7 @@ namespace AlicizaX.Debugger
                 VisualElement buttonRow = new VisualElement();
                 buttonRow.style.flexDirection = FlexDirection.Row;
                 buttonRow.style.marginTop = 8f * scale;
-                buttonRow.Add(CreateActionButton("Clear All Pools", OnClearAllPools, DebuggerTheme.Danger));
+                buttonRow.Add(CreateActionButton("Trim All Pools", OnTrimAllPools, DebuggerTheme.Danger));
                 overviewCard.Add(buttonRow);
                 root.Add(overview);
 
@@ -80,7 +80,7 @@ namespace AlicizaX.Debugger
                 if (m_InfoBuffer.Length < poolCount)
                     m_InfoBuffer = new MemoryPoolInfo[GetBufferCapacity(poolCount)];
 
-                return MemoryPool.GetAllMemoryPoolInfos(m_InfoBuffer);
+                return MemoryPool.GetInfos(m_InfoBuffer);
             }
 
             private void RebuildGroups(int infoCount)
@@ -117,9 +117,9 @@ namespace AlicizaX.Debugger
                 Rebuild();
             }
 
-            private void OnClearAllPools()
+            private void OnTrimAllPools()
             {
-                MemoryPoolRegistry.ClearAll();
+                MemoryPool.TrimAll();
                 Rebuild();
             }
 
@@ -162,10 +162,8 @@ namespace AlicizaX.Debugger
                 item.Add(titleLabel);
 
                 string stats = Utility.Text.Format(
-                    "Unused {0} | Using {1} | Acquire {2} | Release {3} | Created {4}",
-                    info.UnusedCount, info.UsingCount,
-                    info.AcquireCount, info.ReleaseCount,
-                    info.CreateCount);
+                    "Free {0} | Leased {1} | Created {2}",
+                    info.FreeCount, info.LeasedCount, info.CreatedCount);
                 Label statsLabel = new Label(stats);
                 statsLabel.style.color = DebuggerTheme.SecondaryText;
                 statsLabel.style.fontSize = 14f * scale;
@@ -174,19 +172,12 @@ namespace AlicizaX.Debugger
                 item.Add(statsLabel);
 
                 string recycleStatus = Utility.Text.Format(
-                    "Target {0} | MaxCap {1} | Idle {2}f | PageCap {3}",
-                    info.TargetFreeReserve, info.MaxCapacity,
-                    info.IdleFrames, info.PageCapacity);
+                    "Target {0} | Peak {1}",
+                    info.TargetFreeCount, info.PeakLeasedCount);
                 Label recycleLabel = new Label(recycleStatus);
                 recycleLabel.style.fontSize = 13f * scale;
                 recycleLabel.style.whiteSpace = WhiteSpace.Normal;
-
-                if (info.IdleFrames >= 300)
-                    recycleLabel.style.color = DebuggerTheme.Warning;
-                else if (info.IdleFrames >= 200)
-                    recycleLabel.style.color = new Color(0.9f, 0.7f, 0.3f);
-                else
-                    recycleLabel.style.color = DebuggerTheme.SecondaryText;
+                recycleLabel.style.color = DebuggerTheme.SecondaryText;
 
                 item.Add(recycleLabel);
                 return item;

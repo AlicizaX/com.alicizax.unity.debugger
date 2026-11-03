@@ -2,7 +2,7 @@
 
 `com.alicizax.unity.debugger` 提供统一的运行时调试面板：
 
-- `AlicizaX.Debugger.DebuggerComponent`：基于 UI Toolkit 的运行时调试面板，用于查看日志、系统信息、场景信息、Profiler、运行时内存、对象池、引用池、Audio、Timer 等信息，并内置 **Command** 命令控制台选项卡。
+- `AlicizaX.Debugger.DebuggerComponent`：基于 UI Toolkit 的运行时调试面板，用于查看日志、系统信息、场景信息、Profiler、运行时内存、引用池、Audio、Timer 等信息，并内置 **Command** 命令控制台选项卡。
 - `AlicizaX.Console` 命令系统：反射扫描 `[Command]`、自动补全、命令历史、异步命令、Action 序列与外部脚本；UI 已整合到 Debugger 的 `Command` 选项卡中。
 
 包内 `Debugger.prefab` 只挂载 `DebuggerComponent`，推荐直接使用该 prefab 接入。
@@ -96,7 +96,6 @@ public enum DebuggerActiveWindowType : byte
 - `Profiler/Memory/Font`
 - `Profiler/Memory/TextAsset`
 - `Profiler/Memory/ScriptableObject`
-- `Profiler/Object Pool`
 - `Profiler/Reference Pool`
 - `Profiler/Audio`
 - `Profiler/Timer`
