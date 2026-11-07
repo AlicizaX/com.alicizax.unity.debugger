@@ -10,7 +10,6 @@ namespace AlicizaX.Debugger
     {
         private abstract class ScrollableDebuggerWindowBase : IDebuggerWindow
         {
-            private readonly List<VisualElement> _dynamicContent = new List<VisualElement>();
             private ScrollView _scrollView;
             private VisualElement _contentRoot;
 
@@ -36,7 +35,7 @@ namespace AlicizaX.Debugger
 
             public virtual VisualElement CreateView()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 _scrollView = new ScrollView(ScrollViewMode.Vertical)
                 {
                     name = "debugger-scroll-view"
@@ -74,8 +73,21 @@ namespace AlicizaX.Debugger
                 }
 
                 _contentRoot.Clear();
-                _dynamicContent.Clear();
                 BuildWindow(_contentRoot);
+            }
+
+            /// <summary>
+            /// 把重建推迟到下一次更新：用于在控件自己的回调里请求重建，
+            /// 避免在事件分发过程中销毁正在处理回调的控件。
+            /// </summary>
+            protected void RequestRebuild()
+            {
+                if (_contentRoot == null)
+                {
+                    return;
+                }
+
+                _contentRoot.schedule.Execute(Rebuild);
             }
 
             internal static VisualElement CreateSection(string title)
@@ -85,7 +97,7 @@ namespace AlicizaX.Debugger
 
             internal static VisualElement CreateSection(string title, out VisualElement card)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 VisualElement section = new VisualElement();
                 section.style.flexDirection = FlexDirection.Column;
                 section.style.marginBottom = 10f * scale;
@@ -107,7 +119,7 @@ namespace AlicizaX.Debugger
 
             internal static VisualElement CreateCard()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 VisualElement card = new VisualElement();
                 card.style.flexDirection = FlexDirection.Column;
                 card.style.paddingLeft = 12f * scale;
@@ -135,7 +147,7 @@ namespace AlicizaX.Debugger
 
             internal static VisualElement CreateRow(string title, string content)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 VisualElement row = new VisualElement();
                 row.style.flexDirection = FlexDirection.Row;
                 row.style.alignItems = Align.Center;
@@ -164,7 +176,7 @@ namespace AlicizaX.Debugger
 
             internal static Button CreateGhostButton(string text)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Button button = new Button
                 {
                     text = text ?? string.Empty
@@ -195,7 +207,7 @@ namespace AlicizaX.Debugger
 
             internal static Button CreateActionButton(string text, Action onClick, Color? background = null, Color? foreground = null)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Button button = new Button(onClick)
                 {
                     text = text ?? string.Empty
@@ -237,7 +249,7 @@ namespace AlicizaX.Debugger
 
             internal static Toggle CreateToggle(string label, bool value, Action<bool> onValueChanged)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Toggle toggle = new Toggle(label)
                 {
                     value = value
@@ -269,7 +281,7 @@ namespace AlicizaX.Debugger
 
             internal static Toggle CreateConsoleFilterToggle(string label, bool value, Color indicatorColor, Action<bool> onValueChanged)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Toggle toggle = new Toggle()
                 {
                     value = value
@@ -350,7 +362,7 @@ namespace AlicizaX.Debugger
 
             internal static Slider CreateSlider(float min, float max, float value, Action<float> onValueChanged)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Slider slider = new Slider(min, max)
                 {
                     value = value
@@ -372,7 +384,7 @@ namespace AlicizaX.Debugger
 
             internal static TextField CreateReadOnlyMultilineText(string value)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 TextField textField = new TextField
                 {
                     multiline = true,
@@ -412,7 +424,7 @@ namespace AlicizaX.Debugger
 
             internal static VisualElement CreateToolbarRow()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 VisualElement row = new VisualElement();
                 row.style.flexDirection = FlexDirection.Row;
                 row.style.alignItems = Align.Center;
@@ -1061,10 +1073,14 @@ namespace AlicizaX.Debugger
 
         private abstract class PollingDebuggerWindowBase : ScrollableDebuggerWindowBase
         {
+            // 轮询式窗口每轮都会重建整棵树（结构随状态变化，无法只刷文本），
+            // 因此把刷新上限压到 2 Hz：数据仍然实时，分配量固定在约 2 次重建/秒。
+            private const float DefaultRefreshInterval = 0.5f;
+
             private readonly float _refreshInterval;
             private float _refreshCountdown;
 
-            protected PollingDebuggerWindowBase(float refreshInterval = 0.25f)
+            protected PollingDebuggerWindowBase(float refreshInterval = DefaultRefreshInterval)
             {
                 _refreshInterval = Mathf.Max(0.05f, refreshInterval);
             }

@@ -11,7 +11,7 @@ namespace AlicizaX.Console
     public static partial class AlicizaXConsoleProcessor
     {
 
-        private const string helpStr = "欢迎使用AlicizaXConsole控制台！为了查看有关任何特定命令的特定帮助，" +
+        private const string HelpText = "欢迎使用AlicizaXConsole控制台！为了查看有关任何特定命令的特定帮助，" +
                         "请使用‘man’命令。使用‘man man’查看有关man命令的详细信息。查看所有命令的完整列表" +
 "命令，使用'all-commands'。\n\n" +
 "单目标\n各种命令可能在其命令签名中显示单目标。\n" +
@@ -28,7 +28,7 @@ namespace AlicizaX.Console
         [Command("help", "显示控制台的基本帮助指南")]
         private static string GetHelp()
         {
-            return helpStr;
+            return HelpText;
         }
 
         [Command("manual")]

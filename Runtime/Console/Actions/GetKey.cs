@@ -35,7 +35,7 @@ namespace AlicizaX.Console.Actions
 
         private KeyCode GetCurrentKeyDown()
         {
-            return KeyCodes.FirstOrDefault(InputHelper.GetKeyDown);
+            return KeyCodes.FirstOrDefault(InputKeys.GetKeyDown);
         }
 
         public void Start(ActionContext context) { }

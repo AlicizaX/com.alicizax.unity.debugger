@@ -9,6 +9,7 @@ namespace AlicizaX.Console
     {
         private readonly IAlicizaXConsoleSuggestor[] _suggestors;
         private readonly List<IAlicizaXConsoleSuggestion> _suggestionBuffer = new List<IAlicizaXConsoleSuggestion>();
+        private readonly SuggestionComparer _suggestionComparer = new SuggestionComparer();
 
         public AlicizaXConsoleSuggestor(IEnumerable<IAlicizaXConsoleSuggestor> suggestors)
         {
@@ -24,29 +25,16 @@ namespace AlicizaX.Console
         {
             PreprocessContext(ref context);
 
-            IEnumerable<IAlicizaXConsoleSuggestion> suggestions = _suggestors.SelectMany(x => x.GetSuggestions(context, options));
-
             _suggestionBuffer.Clear();
-            _suggestionBuffer.AddRange(suggestions);
-
-            AlphanumComparator comparator = new AlphanumComparator();
-            IOrderedEnumerable<IAlicizaXConsoleSuggestion> sortedSuggestions =
-                _suggestionBuffer
-                    .OrderBy(x => x.PrimarySignature.Length)
-                    .ThenBy(x => x.PrimarySignature, comparator)
-                    .ThenBy(x => x.SecondarySignature.Length)
-                    .ThenBy(x => x.SecondarySignature, comparator);
-
-            if (options.Fuzzy)
+            for (int i = 0; i < _suggestors.Length; i++)
             {
-                StringComparison comparisonType = options.CaseSensitive
-                    ? StringComparison.CurrentCulture
-                    : StringComparison.CurrentCultureIgnoreCase;
-
-                sortedSuggestions = sortedSuggestions.OrderBy(x => x.PrimarySignature.IndexOf(context.Prompt, comparisonType));
+                _suggestionBuffer.AddRange(_suggestors[i].GetSuggestions(context, options));
             }
 
-            return sortedSuggestions;
+            // 直接原地排序：OrderBy/ThenBy 链每次按键都要分配 4~5 个缓冲与委托。
+            _suggestionComparer.Configure(options.Fuzzy ? context.Prompt : null, options.CaseSensitive);
+            _suggestionBuffer.Sort(_suggestionComparer);
+            return _suggestionBuffer;
         }
 
         private void PreprocessContext(ref SuggestionContext context)
@@ -55,6 +43,60 @@ namespace AlicizaX.Console
             options.ReduceIncompleteScope = true;
 
             context.Prompt = context.Prompt.ReduceScope(options);
+        }
+
+        /// <summary>
+        /// 候选排序：主签名长度 → 主签名自然序 → 次签名长度 → 次签名自然序 → 模糊匹配位置。
+        /// </summary>
+        private sealed class SuggestionComparer : IComparer<IAlicizaXConsoleSuggestion>
+        {
+            private static readonly AlphanumComparator Alphanum = new AlphanumComparator();
+
+            private string _fuzzyPrompt;
+            private StringComparison _comparisonType;
+
+            public void Configure(string fuzzyPrompt, bool caseSensitive)
+            {
+                _fuzzyPrompt = fuzzyPrompt;
+                _comparisonType = caseSensitive
+                    ? StringComparison.CurrentCulture
+                    : StringComparison.CurrentCultureIgnoreCase;
+            }
+
+            public int Compare(IAlicizaXConsoleSuggestion x, IAlicizaXConsoleSuggestion y)
+            {
+                int result = CompareSignature(x, y);
+                if (result != 0 || _fuzzyPrompt == null)
+                {
+                    return result;
+                }
+
+                return x.PrimarySignature.IndexOf(_fuzzyPrompt, _comparisonType)
+                    .CompareTo(y.PrimarySignature.IndexOf(_fuzzyPrompt, _comparisonType));
+            }
+
+            private static int CompareSignature(IAlicizaXConsoleSuggestion x, IAlicizaXConsoleSuggestion y)
+            {
+                int result = x.PrimarySignature.Length.CompareTo(y.PrimarySignature.Length);
+                if (result != 0)
+                {
+                    return result;
+                }
+
+                result = Alphanum.Compare(x.PrimarySignature, y.PrimarySignature);
+                if (result != 0)
+                {
+                    return result;
+                }
+
+                result = x.SecondarySignature.Length.CompareTo(y.SecondarySignature.Length);
+                if (result != 0)
+                {
+                    return result;
+                }
+
+                return Alphanum.Compare(x.SecondarySignature, y.SecondarySignature);
+            }
         }
     }
 }

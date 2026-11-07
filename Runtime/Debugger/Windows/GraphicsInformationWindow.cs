@@ -5,8 +5,14 @@ namespace AlicizaX.Debugger
 {
     public sealed partial class DebuggerComponent
     {
-        private sealed class GraphicsInformationWindow : PollingDebuggerWindowBase
+                [DebuggerWindow("Information/Graphics")]
+        private sealed class GraphicsInformationWindow : ScrollableDebuggerWindowBase
         {
+            public override void OnEnter()
+            {
+                Rebuild();
+            }
+
             protected override void BuildWindow(VisualElement root)
             {
                 VisualElement section = CreateSection("Graphics Information", out VisualElement card);

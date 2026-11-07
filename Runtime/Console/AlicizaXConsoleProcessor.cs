@@ -28,7 +28,7 @@ namespace AlicizaX.Console
     public static partial class AlicizaXConsoleProcessor
     {
         /// <summary>AlicizaX Console Processor 运行时使用的日志等级。</summary>
-        public static LoggingLevel loggingLevel = LoggingLevel.Full;
+        public static LoggingLevel CurrentLoggingLevel { get; set; } = LoggingLevel.Full;
 
         private static readonly AlicizaXConsoleParser _parser = new AlicizaXConsoleParser();
         private static readonly AlicizaXConsolePreprocessor _preprocessor = new AlicizaXConsolePreprocessor();
@@ -39,15 +39,28 @@ namespace AlicizaX.Console
         public const string DefaultCommandAssemblyName = "AlicizaX.Debugger";
         public static readonly string[] DefaultCommandAssemblyNames = { DefaultCommandAssemblyName };
 
-        public static bool TableGenerated { get; private set; }
-        public static bool TableIsGenerating { get; private set; }
+        // 命令表可能在后台线程生成，主线程轮询这两个标志；
+        // 用 volatile 保证可见性（bool 读写在 CLR 上是原子的，缺的是内存屏障）。
+        private static volatile bool _tableGenerated;
+        private static volatile bool _tableGenerating;
+
+        public static bool TableGenerated => _tableGenerated;
+        public static bool TableIsGenerating => _tableGenerating;
 
         [Command("command-count", "Gets the number of loaded commands")]
         public static int LoadedCommandCount => _loadedCommandCount;
         private static int _loadedCommandCount = 0;
-        private static bool _commandCacheDirty = true;
+        private static volatile bool _commandCacheDirty = true;
+        private static int _unscannableTypeCount;
 
-        private static readonly Assembly[] _loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+        /// <summary>
+        /// 取当前已加载的程序集。热更（如 HybridCLR）会在启动后继续加载程序集，
+        /// 所以这里每次重新取，不能缓存成静态快照。
+        /// </summary>
+        private static Assembly[] GetLoadedAssemblies()
+        {
+            return AppDomain.CurrentDomain.GetAssemblies();
+        }
 
         /// <summary>
         /// 获取所有已加载的命令。
@@ -76,7 +89,7 @@ namespace AlicizaX.Console
         /// <param name="forceReload">设为 <c>true</c> 时，会清空并重新生成命令表。</param>
         public static void GenerateCommandTable(bool deployThread = false, bool forceReload = false)
         {
-            GenerateCommandTable(_loadedAssemblies, deployThread, forceReload);
+            GenerateCommandTable(GetLoadedAssemblies(), deployThread, forceReload);
         }
 
         public static void GenerateCommandTableFromAssemblyNames(IEnumerable<string> assemblyNames, bool deployThread = false, bool forceReload = false)
@@ -107,7 +120,7 @@ namespace AlicizaX.Console
                 {
                     resolvedAssemblies.Add(assembly);
                 }
-                else if (loggingLevel >= LoggingLevel.Warnings)
+                else if (CurrentLoggingLevel >= LoggingLevel.Warnings)
                 {
                     Debug.LogWarning(ZString.Format("AlicizaXConsole Processor Warning: Command assembly '{0}' could not be found.", assemblyName));
                 }
@@ -127,7 +140,7 @@ namespace AlicizaX.Console
             Assembly[] assemblyList = assemblies?
                 .Where(x => x != null)
                 .Distinct()
-                .ToArray() ?? _loadedAssemblies;
+                .ToArray() ?? GetLoadedAssemblies();
 
 #if THREADS_SUPPORTED
             if (deployThread)
@@ -150,11 +163,12 @@ namespace AlicizaX.Console
 
             lock (_commandTable)
             {
-                if (!TableGenerated || forceReload)
+                if (!_tableGenerated || forceReload)
                 {
-                    TableIsGenerating = true;
+                    _tableGenerating = true;
+                    _unscannableTypeCount = 0;
                     {
-                        if (forceReload && TableGenerated)
+                        if (forceReload && _tableGenerated)
                         {
                             _commandTable.Clear();
                             _loadedCommandCount = 0;
@@ -170,11 +184,27 @@ namespace AlicizaX.Console
 #endif
                     }
 
-                    TableIsGenerating = false;
-                    TableGenerated = true;
-                    GC.Collect(3, GCCollectionMode.Forced, false, true);
+                    _tableGenerating = false;
+                    _tableGenerated = true;
+                    ReportUnscannableTypes();
                 }
             }
+        }
+
+        /// <summary>
+        /// 已知的 Unity/Mono 反射问题会跳过错过的类型；这里只汇总报一次，
+        /// 既不刷屏也不会让问题完全不可见。
+        /// </summary>
+        private static void ReportUnscannableTypes()
+        {
+            if (_unscannableTypeCount == 0 || CurrentLoggingLevel < LoggingLevel.Warnings)
+            {
+                return;
+            }
+
+            Debug.LogWarning(ZString.Format(
+                "AlicizaX Console: skipped {0} type(s) the runtime could not reflect over (known Unity/Mono issue).",
+                _unscannableTypeCount));
         }
 
         private static IEnumerable<(MethodInfo method, MemberInfo member)> ExtractCommandMethods(Type type)
@@ -218,7 +248,7 @@ namespace AlicizaX.Console
                             FieldDelegateMethod executer = new FieldDelegateMethod(field);
                             yield return (executer, field);
                         }
-                        else if (loggingLevel >= LoggingLevel.Warnings)
+                        else if (CurrentLoggingLevel >= LoggingLevel.Warnings)
                         {
                             Debug.LogWarning(ZString.Format("AlicizaXConsole Processor Warning: Could not add '{0}' from {1} to the table as it is an invalid delegate type.", field.Name, field.DeclaringType));
                         }
@@ -280,29 +310,15 @@ namespace AlicizaX.Console
                 }
                 catch (TypeLoadException)
                 {
-                    // 此问题还在排查中。
-
-                    /*
-                    保留这段注释，用于说明这里原本有调试日志，现在不主动输出。
-
-
-
-                    */
+                    // 已知的运行时反射问题；数量在整表生成后汇总报告一次。
+                    Interlocked.Increment(ref _unscannableTypeCount);
                 }
                 catch (BadImageFormatException)
                 {
-                    // 已确认这是 Unity/Mono 侧的问题。
-                    // 这种情况几乎不会出现在用户代码里，所以这里静默忽略。
-                    // AlicizaXConsole 问题：AlicizaX Console 的问题跟踪记录。
-                    // Unity 问题链接：https://issuetracker.unity3d.com/issues/badimageformatexception-is-thrown-when-calling-getcustomattributes-on-certain-memberinfo-instances
-                    // Mono 问题链接：https://github.com/mono/mono/issues/17278
-
-                    /*
-                    保留这段注释，用于说明这里原本有调试日志，现在不主动输出。
-
-
-
-                    */
+                    // Unity/Mono 侧已知问题（见下方链接），跳过该类型并计数。
+                    // Unity: https://issuetracker.unity3d.com/issues/badimageformatexception-is-thrown-when-calling-getcustomattributes-on-certain-memberinfo-instances
+                    // Mono: https://github.com/mono/mono/issues/17278
+                    Interlocked.Increment(ref _unscannableTypeCount);
                 }
             }
         }
@@ -337,7 +353,7 @@ namespace AlicizaX.Console
             {
                 if (!commandAttribute.Valid)
                 {
-                    if (loggingLevel >= LoggingLevel.Warnings)
+                    if (CurrentLoggingLevel >= LoggingLevel.Warnings)
                     {
                         Debug.LogWarning(ZString.Format("AlicizaXConsole Processor Warning: Could not add '{0}' to the table as it is invalid.", commandAttribute.Alias));
                     }
@@ -382,7 +398,7 @@ namespace AlicizaX.Console
         {
             if (!GetCommandSupported(command, out string reason))
             {
-                if (loggingLevel >= LoggingLevel.Warnings)
+                if (CurrentLoggingLevel >= LoggingLevel.Warnings)
                 {
                     Debug.LogWarning(ZString.Format("AlicizaXConsole Processor Warning: Could not add '{0}' from {1} to the table as it is not supported. {2}",
                         command.CommandSignature,
@@ -398,7 +414,7 @@ namespace AlicizaX.Console
 
             if (alreadyExists)
             {
-                if (loggingLevel >= LoggingLevel.Warnings)
+                if (CurrentLoggingLevel >= LoggingLevel.Warnings)
                 {
                     string fullMethodName = ZString.Format("{0}.{1}", command.MethodData.DeclaringType.FullName, command.MethodData.Name);
                     Debug.LogWarning(ZString.Format("AlicizaXConsole Processor Warning: Could not add {0} to the table as another method with the same alias and parameter count, {1}, already exists.", fullMethodName, key));

@@ -3,12 +3,22 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using UnityEngine;
 
 namespace AlicizaX.Console
 {
     public static class AlicizaXConsoleMacros
     {
         private static readonly Dictionary<string, string> _macroTable = new Dictionary<string, string>();
+
+        /// <summary>
+        /// 进入播放模式时清空宏表，避免关闭 Domain Reload 时把上一次会话的宏带进新会话。
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetMacros()
+        {
+            _macroTable.Clear();
+        }
 
         public static IReadOnlyDictionary<string, string> GetMacros()
         {
@@ -80,23 +90,24 @@ namespace AlicizaX.Console
         public static void DefineMacro(string macroName, string macroExpansion)
         {
             macroName = macroName.Trim();
-            if (macroName.Contains(' ')) { throw new ArgumentException("Macro names cannot contain whitespace."); }
-            if (macroName.Contains('\n')) { throw new ArgumentException("Macro names cannot contain newlines."); }
+            for (int i = 0; i < macroName.Length; i++)
+            {
+                if (char.IsWhiteSpace(macroName[i])) { throw new ArgumentException("Macro names cannot contain whitespace."); }
+            }
+
             if (macroName.Contains('#')) { throw new ArgumentException("Macro names cannot contain hashtags."); }
             if (macroName == "define") { throw new ArgumentException("Macros cannot be named define."); }
-            if (macroExpansion.Contains('\n')) { throw new ArgumentException("Macro names cannot contain newlines."); }
+            if (macroExpansion.Contains('\n')) { throw new ArgumentException("Macro expansions cannot contain newlines."); }
             if (macroExpansion.Contains(ZString.Concat('#', macroName))) { throw new ArgumentException("Macros cannot contain themselves within the expansion."); }
 
-            if (_macroTable.ContainsKey(macroName)) { _macroTable[macroName] = macroExpansion; }
-            else { _macroTable.Add(macroName, macroExpansion); }
+            _macroTable[macroName] = macroExpansion;
         }
 
         [Command("remove-macro")]
         [CommandDescription("Removes the specified macro from the macro table")]
         public static void RemoveMacro(string macroName)
         {
-            if (_macroTable.ContainsKey(macroName)) { _macroTable.Remove(macroName); }
-            else { throw new Exception(ZString.Format("Specified macro #{0} as it was not defined.", macroName)); }
+            if (!_macroTable.Remove(macroName)) { throw new Exception(ZString.Format("Specified macro #{0} as it was not defined.", macroName)); }
         }
 
         [Command("clear-macros")]
@@ -120,9 +131,6 @@ namespace AlicizaX.Console
                 {
                     dumpFile.WriteLine(ZString.Format("{0} {1}", macro.Key, macro.Value));
                 }
-
-                dumpFile.Flush();
-                dumpFile.Close();
             }
         }
 
@@ -141,24 +149,26 @@ namespace AlicizaX.Console
                 while (!macroFile.EndOfStream)
                 {
                     string line = macroFile.ReadLine();
-                    string[] parts = line.Split(" ".ToCharArray(), 2);
-                    if (parts.Length != 2)
+                    int separatorIndex = line.IndexOf(' ');
+                    if (separatorIndex <= 0 || separatorIndex == line.Length - 1)
                     {
                         messages.Add(ZString.Format("'{0}' is not a valid macro definition", line));
+                        continue;
                     }
 
+                    string macroName = line.Substring(0, separatorIndex);
+                    string macroExpansion = line.Substring(separatorIndex + 1);
                     try
                     {
-                        DefineMacro(parts[0], parts[1]);
-                        messages.Add(ZString.Format("#{0} was successfully defined", parts[0]));
+                        DefineMacro(macroName, macroExpansion);
+                        messages.Add(ZString.Format("#{0} was successfully defined", macroName));
                     }
                     catch (Exception e)
                     {
-                        messages.Add(ZString.Format("#{0} could not be defined: {1}", parts[0], e.Message));
+                        messages.Add(ZString.Format("#{0} could not be defined: {1}", macroName, e.Message));
                     }
                 }
 
-                macroFile.Close();
                 return ZString.Join("\n", messages);
             }
         }

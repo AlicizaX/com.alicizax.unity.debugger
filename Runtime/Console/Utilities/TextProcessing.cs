@@ -102,24 +102,65 @@ namespace AlicizaX.Console
         public static int GetMaxScopeDepthAt<T>(this string input, int cursor, T leftScopers, T rightScopers)
             where T : IReadOnlyList<char>
         {
-            int[] scopes = new int[leftScopers.Count];
+            int[] scopes = RentScopeCounters(leftScopers.Count);
             for (int i = 0; i <= cursor; i++)
             {
                 if (i == 0 || input[i - 1] != '\\')
                 {
-                    for (int j = 0; j < leftScopers.Count; j++)
-                    {
-                        char leftScoper = leftScopers[j];
-                        char rightScoper = rightScopers[j];
-
-                        if (input[i] == leftScoper && leftScoper == rightScoper) { scopes[j] = 1 - scopes[j]; }
-                        else if (input[i] == leftScoper) { scopes[j]++; }
-                        else if (input[i] == rightScoper) { scopes[j]--; }
-                    }
+                    UpdateScopeCounters(input[i], leftScopers, rightScopers, scopes);
                 }
             }
 
-            return scopes.Max();
+            return MaxOf(scopes, leftScopers.Count);
+        }
+
+        // 逐字符热路径（补全/解析）：缓冲区按线程复用，避免每次调用分配一个数组。
+        [ThreadStatic]
+        private static int[] _scopeCounters;
+
+        private static int[] RentScopeCounters(int count)
+        {
+            if (_scopeCounters == null || _scopeCounters.Length < count)
+            {
+                _scopeCounters = new int[count];
+                return _scopeCounters;
+            }
+
+            Array.Clear(_scopeCounters, 0, count);
+            return _scopeCounters;
+        }
+
+        private static void UpdateScopeCounters<T>(char c, T leftScopers, T rightScopers, int[] scopes)
+            where T : IReadOnlyList<char>
+        {
+            for (int j = 0; j < leftScopers.Count; j++)
+            {
+                char leftScoper = leftScopers[j];
+                char rightScoper = rightScopers[j];
+
+                if (c == leftScoper && leftScoper == rightScoper) { scopes[j] = 1 - scopes[j]; }
+                else if (c == leftScoper) { scopes[j]++; }
+                else if (c == rightScoper) { scopes[j]--; }
+            }
+        }
+
+        private static int MaxOf(int[] values, int count)
+        {
+            if (count <= 0)
+            {
+                return 0;
+            }
+
+            int max = values[0];
+            for (int i = 1; i < count; i++)
+            {
+                if (values[i] > max)
+                {
+                    max = values[i];
+                }
+            }
+
+            return max;
         }
 
         #endregion
@@ -407,22 +448,28 @@ namespace AlicizaX.Console
             {
                 if (i == 0 || input[i - 1] != '\\')
                 {
-                    for (int j = 0; j < leftScopers.Count; j++)
-                    {
-                        char leftScoper = leftScopers[j];
-                        char rightScoper = rightScopers[j];
-
-                        if (input[i] == leftScoper && leftScoper == rightScoper) { scopes[j] = 1 - scopes[j]; }
-                        else if (input[i] == leftScoper) { scopes[j]++; }
-                        else if (input[i] == rightScoper) { scopes[j]--; }
-                    }
+                    UpdateScopeCounters(input[i], leftScopers, rightScopers, scopes);
                 }
 
-                if (input[i] == splitChar && scopes.All(x => x == 0))
+                if (input[i] == splitChar && IsAtTopLevel(scopes))
                 {
                     yield return i;
                 }
             }
+        }
+
+        // 逐字符热路径：Enumerable.All 会为每个字符分配一个数组枚举器，这里手写循环。
+        private static bool IsAtTopLevel(int[] scopes)
+        {
+            for (int i = 0; i < scopes.Length; i++)
+            {
+                if (scopes[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         #endregion

@@ -171,7 +171,6 @@ namespace AlicizaX.Console
         };
 
         private static readonly Dictionary<string, Type> _reverseTypeDisplayNames = _typeDisplayNames.Invert();
-        private static readonly Assembly[] _loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
         private static readonly string[] _defaultNamespaces = new string[] { "System", "System.Collections", "System.Collections.Generic", "UnityEngine", "UnityEngine.UI", "AlicizaX.Debugger","AlicizaX.Console" };
         private static readonly List<string> _namespaceTable = new List<string>(_defaultNamespaces);
 
@@ -357,10 +356,12 @@ namespace AlicizaX.Console
 
         private static Type ParseTypeBaseCase(string typeName)
         {
-            return GetTypeFromAssemblies(typeName, _loadedAssemblies, false, false)
-                ?? GetTypeFromAssemblies(typeName, _namespaceTable, _loadedAssemblies, false, false)
-                ?? GetTypeFromAssemblies(typeName, _loadedAssemblies, false, true)
-                ?? GetTypeFromAssemblies(typeName, _namespaceTable, _loadedAssemblies, true, true);
+            // 每次重新取程序集列表：热更程序集在启动后才加载，缓存快照会导致类型解析不到。
+            Assembly[] loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+            return GetTypeFromAssemblies(typeName, loadedAssemblies, false, false)
+                ?? GetTypeFromAssemblies(typeName, _namespaceTable, loadedAssemblies, false, false)
+                ?? GetTypeFromAssemblies(typeName, loadedAssemblies, false, true)
+                ?? GetTypeFromAssemblies(typeName, _namespaceTable, loadedAssemblies, true, true);
         }
 
         private static Type GetTypeFromAssemblies(string typeName, IEnumerable<string> namespaces, IEnumerable<Assembly> assemblies, bool throwOnError, bool ignoreCase)

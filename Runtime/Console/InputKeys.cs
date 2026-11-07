@@ -1,5 +1,9 @@
-#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+// INPUTSYSTEM_SUPPORT 由 asmdef 的 versionDefines 提供：com.unity.inputsystem 是可选依赖，
+// 没装这个包时符号不会定义，整段新输入 API 不参与编译，自动回退旧 Input。
+// 只有在"包存在"且"当前激活的是新输入系统"时才走新 API；Both 模式仍用旧 Input。
+#if INPUTSYSTEM_SUPPORT && !ENABLE_LEGACY_INPUT_MANAGER
 #define NEW_INPUT
+using System.Collections.Generic;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
 #endif
@@ -8,74 +12,89 @@ using UnityEngine;
 
 namespace AlicizaX.Console
 {
-    public static class InputHelper
+    public static class InputKeys
     {
-        private static bool IsKeySupported(KeyCode key)
-        {
-#if NEW_INPUT
-            bool KeyExists()
-            {
-                Key keyConverted = key.ToKey();
-                foreach (KeyControl k in Keyboard.current.allKeys)
-                {
-                    if (k.keyCode == keyConverted)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            return key != KeyCode.None
-                   && Keyboard.current != null
-                   && KeyExists();
-#else
-            return true;
-#endif
-        }
-
         public static bool GetKey(KeyCode key)
         {
 #if NEW_INPUT
-            return IsKeySupported(key)
-                && Keyboard.current[key.ToKey()].isPressed;
-
-#else
+            return TryGetKeyControl(key, out KeyControl control) && control.isPressed;
+#elif ENABLE_LEGACY_INPUT_MANAGER
             return Input.GetKey(key);
+#else
+            // Active Input Handling 设为 New 却没装 Input System 包：两个 API 都不可用。
+            return false;
 #endif
         }
 
         public static bool GetKeyDown(KeyCode key)
         {
 #if NEW_INPUT
-            return IsKeySupported(key)
-                   && Keyboard.current[key.ToKey()].wasPressedThisFrame;
-#else
+            return TryGetKeyControl(key, out KeyControl control) && control.wasPressedThisFrame;
+#elif ENABLE_LEGACY_INPUT_MANAGER
             return Input.GetKeyDown(key);
+#else
+            return false;
 #endif
         }
 
         public static bool GetKeyUp(KeyCode key)
         {
 #if NEW_INPUT
-            return IsKeySupported(key)
-                && Keyboard.current[key.ToKey()].wasReleasedThisFrame;
+            return TryGetKeyControl(key, out KeyControl control) && control.wasReleasedThisFrame;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetKeyUp(key);
 #else
-            return Input.GetKeyDown(key);
+            return false;
 #endif
         }
 
         public static Vector2 GetMousePosition()
         {
 #if NEW_INPUT
-            return Mouse.current.position.ReadValue();
-#else
+            Mouse mouse = Mouse.current;
+            return mouse != null ? mouse.position.ReadValue() : Vector2.zero;
+#elif ENABLE_LEGACY_INPUT_MANAGER
             return Input.mousePosition;
+#else
+            return Vector2.zero;
 #endif
         }
 
 #if NEW_INPUT
+        /// <summary>
+        /// KeyCode → KeyControl 的查找缓存。原来每次查询都线性遍历 Keyboard.allKeys（100+ 项），
+        /// 而 ModifierKeyCombo 一次按键判定要查 8 次。
+        /// </summary>
+        private static readonly Dictionary<KeyCode, KeyControl> KeyControls = new Dictionary<KeyCode, KeyControl>();
+        private static Keyboard _cachedKeyboard;
+
+        private static bool TryGetKeyControl(KeyCode key, out KeyControl control)
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null || key == KeyCode.None)
+            {
+                control = null;
+                return false;
+            }
+
+            // 设备重连/重初始化后 KeyControl 会换成新实例，缓存必须整体失效。
+            if (!ReferenceEquals(_cachedKeyboard, keyboard))
+            {
+                _cachedKeyboard = keyboard;
+                KeyControls.Clear();
+            }
+
+            if (KeyControls.TryGetValue(key, out control))
+            {
+                return control != null;
+            }
+
+            Key keyConverted = key.ToKey();
+            control = keyConverted != Key.None ? keyboard[keyConverted] : null;
+            KeyControls[key] = control;
+            return control != null;
+        }
+
         private static Key ToKey(this KeyCode key)
         {
             switch (key)

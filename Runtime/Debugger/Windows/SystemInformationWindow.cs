@@ -5,10 +5,34 @@ namespace AlicizaX.Debugger
 {
     public sealed partial class DebuggerComponent
     {
-        private sealed class SystemInformationWindow : PollingDebuggerWindowBase
+                [DebuggerWindow("Information/System")]
+        private sealed class SystemInformationWindow : ScrollableDebuggerWindowBase
         {
+            private BatteryStatus _lastBatteryStatus;
+            private float _lastBatteryLevel;
+
+            public override void OnEnter()
+            {
+                Rebuild();
+            }
+
+            public override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+            {
+                // 这些值几乎不变，只在电池状态真的变化时重建，避免无意义的定时重建。
+                if (SystemInfo.batteryStatus == _lastBatteryStatus
+                    && Mathf.Approximately(SystemInfo.batteryLevel, _lastBatteryLevel))
+                {
+                    return;
+                }
+
+                Rebuild();
+            }
+
             protected override void BuildWindow(VisualElement root)
             {
+                _lastBatteryStatus = SystemInfo.batteryStatus;
+                _lastBatteryLevel = SystemInfo.batteryLevel;
+
                 VisualElement section = CreateSection("System Information", out VisualElement card);
                 card.Add(CreateRow("Device Unique ID", SystemInfo.deviceUniqueIdentifier));
                 card.Add(CreateRow("Device Name", SystemInfo.deviceName));

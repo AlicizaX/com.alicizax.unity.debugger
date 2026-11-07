@@ -20,14 +20,14 @@ namespace AlicizaX.Console
             get
             {
                 bool ctrlDown = !Ctrl ^
-                                (InputHelper.GetKey(KeyCode.LeftControl)  ||
-                                 InputHelper.GetKey(KeyCode.RightControl) ||
-                                 InputHelper.GetKey(KeyCode.LeftCommand)  ||
-                                 InputHelper.GetKey(KeyCode.RightCommand));
+                                (InputKeys.GetKey(KeyCode.LeftControl)  ||
+                                 InputKeys.GetKey(KeyCode.RightControl) ||
+                                 InputKeys.GetKey(KeyCode.LeftCommand)  ||
+                                 InputKeys.GetKey(KeyCode.RightCommand));
 
-                bool altDown = !Alt ^ (InputHelper.GetKey(KeyCode.LeftAlt) || InputHelper.GetKey(KeyCode.RightAlt));
+                bool altDown = !Alt ^ (InputKeys.GetKey(KeyCode.LeftAlt) || InputKeys.GetKey(KeyCode.RightAlt));
                 bool shiftDown =
-                    !Shift ^ (InputHelper.GetKey(KeyCode.LeftShift) || InputHelper.GetKey(KeyCode.RightShift));
+                    !Shift ^ (InputKeys.GetKey(KeyCode.LeftShift) || InputKeys.GetKey(KeyCode.RightShift));
 
                 return ctrlDown && altDown && shiftDown;
             }
@@ -35,12 +35,12 @@ namespace AlicizaX.Console
 
         public bool IsHeld()
         {
-            return ModifiersActive && InputHelper.GetKey(Key);
+            return ModifiersActive && InputKeys.GetKey(Key);
         }
 
         public bool IsPressed()
         {
-            return ModifiersActive && InputHelper.GetKeyDown(Key);
+            return ModifiersActive && InputKeys.GetKeyDown(Key);
         }
 
         public static implicit operator ModifierKeyCombo(KeyCode key)

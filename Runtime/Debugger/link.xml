@@ -1,0 +1,13 @@
+<linker>
+  <!--
+    自动注册（[DebuggerWindow]）靠反射发现窗口类型；IL2CPP 会裁剪"只被反射引用"的类型。
+    本包内置窗口依赖下面的程序集级保留。外部扩展程序集请自行二选一：
+
+      <assembly fullname="Your.Gameplay" preserve="all" />
+
+      <assembly fullname="Your.Gameplay">
+        <type fullname="Your.Namespace.MyDebugWindow" preserve="all" />
+      </assembly>
+  -->
+  <assembly fullname="AlicizaX.Debugger" preserve="all" />
+</linker>

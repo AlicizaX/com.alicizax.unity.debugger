@@ -6,7 +6,8 @@ namespace AlicizaX.Console
     {
         public string Process(string text)
         {
-            if (text.StartsWith("#define", StringComparison.CurrentCulture))
+            // 关键字匹配必须用序数比较：区域性比较会让土耳其语等区域下的 "#define" 行为不同。
+            if (text.StartsWith("#define", StringComparison.Ordinal))
             {
                 return text;
             }

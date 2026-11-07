@@ -42,7 +42,7 @@ namespace AlicizaX.Debugger
 
             public override void Initialize(params object[] args)
             {
-                if (AppServices.HasWorld && AppServices.App.TryGet(out _timerService))
+                if (AppServices.TryGet(out _timerService))
                 {
                     _timerDebugService = _timerService as ITimerDebugService;
                 }
@@ -106,7 +106,7 @@ namespace AlicizaX.Debugger
 
                 if (_timerService == null)
                 {
-                    if (AppServices.HasWorld && AppServices.App.TryGet(out _timerService))
+                    if (AppServices.TryGet(out _timerService))
                     {
                         _timerDebugService = _timerService as ITimerDebugService;
                     }

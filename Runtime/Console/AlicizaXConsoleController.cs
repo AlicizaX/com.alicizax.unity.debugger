@@ -20,11 +20,16 @@ namespace AlicizaX.Console
         private static readonly Color ColorReturnDefault = Color.white;
         private const string CommandLogFormat = "> {0}";
 
+        /// <summary>日志视图刷新间隔（秒）。视图是单个 Label，整份重写代价高，按固定频率合并刷新。</summary>
+        private const float ViewFlushInterval = 0.1f;
+
         private readonly AlicizaXConsoleConfig _config;
         private readonly AlicizaXConsoleSerializer _serializer = new AlicizaXConsoleSerializer();
         private readonly List<string> _previousCommands = new List<string>();
         private readonly List<Task> _currentTasks = new List<Task>();
         private readonly List<IEnumerator<ICommandAction>> _currentActions = new List<IEnumerator<ICommandAction>>();
+        private static readonly Dictionary<Type, System.Reflection.PropertyInfo> ResultProperties =
+            new Dictionary<Type, System.Reflection.PropertyInfo>();
 
         private SuggestionStack _suggestionStack;
         private LogStorage _logStorage;
@@ -35,6 +40,8 @@ namespace AlicizaX.Console
         private string _currentInput = string.Empty;
         private bool _isGeneratingTable;
         private bool _consoleRequiresFlush;
+        private float _nextViewFlushAt;
+        private int _jobCounterTaskCount = -1;
         private bool _isHandlingUserResponse;
         private ResponseConfig _currentResponseConfig;
         private Action<string> _onSubmitResponseCallback;
@@ -94,7 +101,10 @@ namespace AlicizaX.Console
         {
             if (_initialized) { return; }
 
-            _voidTaskType = typeof(Task<>).MakeGenericType(Type.GetType("System.Threading.Tasks.VoidTaskResult"));
+            // VoidTaskResult 是 BCL 内部类型，只能按名字取；取不到时退化为"按 Task<T> 处理"，
+            // 不要在这一步抛出 ArgumentNullException 让整个控制台初始化失败。
+            Type voidTaskResultType = Type.GetType("System.Threading.Tasks.VoidTaskResult");
+            _voidTaskType = voidTaskResultType != null ? typeof(Task<>).MakeGenericType(voidTaskResultType) : null;
             InitializeLogging();
             InitializeSuggestionStack();
 
@@ -117,6 +127,9 @@ namespace AlicizaX.Console
             CancelAllActions();
             _currentTasks.Clear();
             DetachView();
+            _logStorage?.Dispose();
+            _logStorage = null;
+            _logQueue = null;
             IsActive = false;
             _initialized = false;
         }
@@ -130,7 +143,8 @@ namespace AlicizaX.Console
             _view.SetPlaceholder(_placeholder);
             _view.InputValue = _currentInput ?? string.Empty;
             UpdateSuggestionUi();
-            UpdateJobCounterUi();
+            _jobCounterTaskCount = -1;
+            HandleAsyncJobCounter();
 
             if (_isGeneratingTable || AlicizaXConsoleProcessor.TableIsGenerating)
             {
@@ -778,10 +792,16 @@ namespace AlicizaX.Console
                 else
                 {
                     Type taskType = _currentTasks[i].GetType();
-                    if (taskType.IsGenericTypeOf(typeof(Task<>)) && !_voidTaskType.IsAssignableFrom(taskType))
+                    if (taskType.IsGenericTypeOf(typeof(Task<>))
+                        && (_voidTaskType == null || !_voidTaskType.IsAssignableFrom(taskType)))
                     {
-                        System.Reflection.PropertyInfo resultProperty = _currentTasks[i].GetType().GetProperty("Result");
-                        object result = resultProperty.GetValue(_currentTasks[i]);
+                        if (!ResultProperties.TryGetValue(taskType, out System.Reflection.PropertyInfo resultProperty))
+                        {
+                            resultProperty = taskType.GetProperty("Result");
+                            ResultProperties[taskType] = resultProperty;
+                        }
+
+                        object result = resultProperty?.GetValue(_currentTasks[i]);
                         LogToConsole(Serialize(result));
                     }
                 }
@@ -824,26 +844,26 @@ namespace AlicizaX.Console
 
         private void HandleAsyncJobCounter()
         {
-            if (!_config.ShowCurrentJobs)
+            ApplyJobCounter(_config.ShowCurrentJobs ? _currentTasks.Count : 0);
+        }
+
+        private void ApplyJobCounter(int taskCount)
+        {
+            // Tick 每帧都会走到这里；文本只跟任务数有关，数量不变就不碰视图。
+            if (_jobCounterTaskCount == taskCount)
+            {
+                return;
+            }
+
+            _jobCounterTaskCount = taskCount;
+            if (taskCount == 0)
             {
                 _view?.SetJobCounter(string.Empty, false);
                 return;
             }
 
-            if (_currentTasks.Count == 0)
-            {
-                _view?.SetJobCounter(string.Empty, false);
-            }
-            else
-            {
-                string text = $"{_currentTasks.Count} job{(_currentTasks.Count == 1 ? string.Empty : "s")} in progress";
-                _view?.SetJobCounter(text, true);
-            }
-        }
-
-        private void UpdateJobCounterUi()
-        {
-            HandleAsyncJobCounter();
+            string text = taskCount == 1 ? "1 job in progress" : $"{taskCount} jobs in progress";
+            _view?.SetJobCounter(text, true);
         }
 
         private void AppendLog(AlicizaXConsoleLog log)
@@ -876,7 +896,13 @@ namespace AlicizaX.Console
         {
             if (!_consoleRequiresFlush || _view == null || _logStorage == null) { return; }
 
+            // 视图只有一个 Label，每次刷新都要把整份日志重新序列化，
+            // 因此把刷新上限压到 10 Hz：日志洪峰时不再逐帧重算。
+            float now = Time.unscaledTime;
+            if (now < _nextViewFlushAt) { return; }
+
             _consoleRequiresFlush = false;
+            _nextViewFlushAt = now + ViewFlushInterval;
             _view.SetLogText(_logStorage.GetLogString());
         }
 

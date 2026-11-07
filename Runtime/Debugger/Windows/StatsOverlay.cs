@@ -51,7 +51,7 @@ namespace AlicizaX.Debugger
                     {
                         if (value)
                         {
-                            EnsureAttached();
+                            AttachToRoot();
                             ApplyLayout();
                             RefreshNow();
                         }
@@ -62,7 +62,7 @@ namespace AlicizaX.Debugger
                     _visible = value;
                     if (_visible)
                     {
-                        EnsureAttached();
+                        AttachToRoot();
                         StartRecorders();
                         ApplyLayout();
                         RefreshNow();
@@ -145,7 +145,7 @@ namespace AlicizaX.Debugger
                 Detach();
             }
 
-            private void EnsureAttached()
+            private void AttachToRoot()
             {
                 if (_owner == null || _owner._root == null)
                 {
@@ -373,14 +373,23 @@ namespace AlicizaX.Debugger
             }
 
 #if UNITY_2020_2_OR_NEWER
+            private static bool _hasWarnedRecorderUnavailable;
+
             private static ProfilerRecorder CreateRecorder(string markerName)
             {
                 try
                 {
                     return ProfilerRecorder.StartNew(ProfilerCategory.Render, markerName);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    // 拿不到 recorder 时对应字段显示 "n/a"；只提示一次，避免每帧刷屏。
+                    if (!_hasWarnedRecorderUnavailable)
+                    {
+                        _hasWarnedRecorderUnavailable = true;
+                        Debug.LogWarning("Debugger: profiler recorder '" + markerName + "' is unavailable on this platform. " + e.Message);
+                    }
+
                     return default;
                 }
             }

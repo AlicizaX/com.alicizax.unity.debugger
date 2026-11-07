@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using AlicizaX.Console;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UIElements;
 
 namespace AlicizaX.Debugger
@@ -14,8 +16,10 @@ namespace AlicizaX.Debugger
             [SerializeField] private KeyCode m_SubmitCommandKey = KeyCode.Return;
             [SerializeField] private ModifierKeyCombo m_SelectNextSuggestionKey = KeyCode.Tab;
             [SerializeField] private ModifierKeyCombo m_SelectPreviousSuggestionKey = new ModifierKeyCombo { Key = KeyCode.Tab, Shift = true };
-            [SerializeField] private KeyCode m_NextCommandKey = KeyCode.UpArrow;
-            [SerializeField] private KeyCode m_PreviousCommandKey = KeyCode.DownArrow;
+            [FormerlySerializedAs("m_NextCommandKey")]
+            [SerializeField] private KeyCode m_HistoryPreviousKey = KeyCode.UpArrow;
+            [FormerlySerializedAs("m_PreviousCommandKey")]
+            [SerializeField] private KeyCode m_HistoryNextKey = KeyCode.DownArrow;
             [SerializeField] private ModifierKeyCombo m_CancelActionsKey = new ModifierKeyCombo { Key = KeyCode.C, Ctrl = true };
 
             [SerializeField] private bool m_VerboseErrors;
@@ -58,11 +62,15 @@ namespace AlicizaX.Debugger
             private Button _submitButton;
             private Button _clearButton;
             private string _placeholderText = "Enter Command...";
-            private bool _suppressInputCallback;
             private float _inputScale = 1f;
             private bool _caretBlinkOn = true;
             private IVisualElementScheduledItem _caretBlinkSchedule;
             private IVisualElementScheduledItem _caretLayoutSchedule;
+            private IVisualElementScheduledItem _caretLateLayoutSchedule;
+
+            private static readonly Dictionary<Type, PropertyInfo> CursorWidthProperties = new Dictionary<Type, PropertyInfo>();
+            private static bool _hasWarnedCursorWidthUnsupported;
+            private static bool _hasWarnedCaretUnsupported;
 
             public void Initialize(params object[] args)
             {
@@ -119,7 +127,7 @@ namespace AlicizaX.Debugger
 
             public VisualElement CreateView()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
 
                 _root = new VisualElement();
                 _root.style.flexGrow = 1f;
@@ -347,9 +355,7 @@ namespace AlicizaX.Debugger
                         return;
                     }
 
-                    _suppressInputCallback = true;
                     _inputField.SetValueWithoutNotify(value ?? string.Empty);
-                    _suppressInputCallback = false;
                     UpdatePlaceholderVisibility();
                     RestartCaretBlink();
                     QueueCaretLayout();
@@ -470,6 +476,10 @@ namespace AlicizaX.Debugger
                 });
             }
 
+            /// <summary>
+            /// 把本窗口的序列化字段搬到运行时配置。
+            /// 注意：新增 [SerializeField] 选项时必须同步加到这里，否则 Inspector 里能改但运行时不生效。
+            /// </summary>
             private AlicizaXConsoleConfig BuildConfig()
             {
                 return new AlicizaXConsoleConfig
@@ -477,8 +487,8 @@ namespace AlicizaX.Debugger
                     SubmitCommandKey = m_SubmitCommandKey,
                     SelectNextSuggestionKey = m_SelectNextSuggestionKey,
                     SelectPreviousSuggestionKey = m_SelectPreviousSuggestionKey,
-                    NextCommandKey = m_NextCommandKey,
-                    PreviousCommandKey = m_PreviousCommandKey,
+                    HistoryPreviousKey = m_HistoryPreviousKey,
+                    HistoryNextKey = m_HistoryNextKey,
                     CancelActionsKey = m_CancelActionsKey,
                     VerboseErrors = m_VerboseErrors,
                     VerboseLogging = m_VerboseLogging,
@@ -508,11 +518,6 @@ namespace AlicizaX.Debugger
 
             private void OnInputValueChanged(ChangeEvent<string> evt)
             {
-                if (_suppressInputCallback)
-                {
-                    return;
-                }
-
                 UpdatePlaceholderVisibility();
                 _controller?.OnInputChanged(evt.newValue);
                 RestartCaretBlink();
@@ -546,12 +551,12 @@ namespace AlicizaX.Debugger
                     _controller.InvokeCommandFromInput();
                     evt.StopPropagation();
                 }
-                else if (m_StoreCommandHistory && evt.keyCode == m_NextCommandKey)
+                else if (m_StoreCommandHistory && evt.keyCode == m_HistoryPreviousKey)
                 {
                     _controller.SelectPreviousHistory();
                     evt.StopPropagation();
                 }
-                else if (m_StoreCommandHistory && evt.keyCode == m_PreviousCommandKey)
+                else if (m_StoreCommandHistory && evt.keyCode == m_HistoryNextKey)
                 {
                     _controller.SelectNextHistory();
                     evt.StopPropagation();
@@ -611,6 +616,8 @@ namespace AlicizaX.Debugger
                 StopCaretBlink();
                 _caretLayoutSchedule?.Pause();
                 _caretLayoutSchedule = null;
+                _caretLateLayoutSchedule?.Pause();
+                _caretLateLayoutSchedule = null;
                 _root = null;
                 _logScroll = null;
                 _logLabel = null;
@@ -695,8 +702,9 @@ namespace AlicizaX.Debugger
                 {
                     selection = textField.textSelection;
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    WarnCaretUnsupported(e);
                 }
 
                 if (selection != null)
@@ -720,11 +728,23 @@ namespace AlicizaX.Debugger
                     textElement.selection.selectionColor = DebuggerTheme.TextSelection;
                     TrySetCursorWidth(textElement.selection, 1f);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    WarnCaretUnsupported(e);
                 }
 
                 textElement.style.color = DebuggerTheme.PrimaryText;
+            }
+
+            private static void WarnCaretUnsupported(Exception e)
+            {
+                if (_hasWarnedCaretUnsupported)
+                {
+                    return;
+                }
+
+                _hasWarnedCaretUnsupported = true;
+                Debug.LogWarning("Debugger: text caret API is not available on this platform. " + e.Message);
             }
 
             private static void TrySetCursorWidth(ITextSelection selection, float width)
@@ -736,14 +756,26 @@ namespace AlicizaX.Debugger
 
                 try
                 {
-                    PropertyInfo property = selection.GetType().GetProperty("cursorWidth");
+                    // 光标宽度在部分平台上不可写；按类型缓存反射结果，避免每次光标刷新都查元数据。
+                    Type selectionType = selection.GetType();
+                    if (!CursorWidthProperties.TryGetValue(selectionType, out PropertyInfo property))
+                    {
+                        property = selectionType.GetProperty("cursorWidth");
+                        CursorWidthProperties[selectionType] = property;
+                    }
+
                     if (property != null && property.CanWrite)
                     {
                         property.SetValue(selection, width);
                     }
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    if (!_hasWarnedCursorWidthUnsupported)
+                    {
+                        _hasWarnedCursorWidthUnsupported = true;
+                        Debug.LogWarning("Debugger: cursor width is not writable on this platform. " + e.Message);
+                    }
                 }
             }
 
@@ -806,8 +838,13 @@ namespace AlicizaX.Debugger
                     _caretLayoutSchedule = _inputField.schedule.Execute(UpdateCustomCaret);
                 }
 
+                if (_caretLateLayoutSchedule == null)
+                {
+                    _caretLateLayoutSchedule = _inputField.schedule.Execute(UpdateCustomCaret);
+                }
+
                 _caretLayoutSchedule.ExecuteLater(0);
-                _inputField.schedule.Execute(UpdateCustomCaret).ExecuteLater(16);
+                _caretLateLayoutSchedule.ExecuteLater(16);
             }
 
             private void HideCustomCaret()
@@ -863,8 +900,9 @@ namespace AlicizaX.Debugger
                         }
                     }
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    WarnCaretUnsupported(e);
                 }
 
                 if (!positioned)

@@ -39,7 +39,7 @@ namespace AlicizaX.Debugger
 
             private bool TryBindAudioService()
             {
-                if (AppServices.HasWorld && AppServices.App.TryGet<IAudioService>(out IAudioService audioService) && audioService is IAudioDebugService debugService)
+                if (AppServices.TryGet<IAudioService>(out IAudioService audioService) && audioService is IAudioDebugService debugService)
                 {
                     _audioDebugService = debugService;
                     return true;

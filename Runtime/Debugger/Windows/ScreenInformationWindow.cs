@@ -5,10 +5,40 @@ namespace AlicizaX.Debugger
 {
     public sealed partial class DebuggerComponent
     {
-        private sealed class ScreenInformationWindow : PollingDebuggerWindowBase
+                [DebuggerWindow("Information/Screen")]
+        private sealed class ScreenInformationWindow : ScrollableDebuggerWindowBase
         {
+            private int _lastWidth;
+            private int _lastHeight;
+            private FullScreenMode _lastFullScreenMode;
+            private ScreenOrientation _lastOrientation;
+
+            public override void OnEnter()
+            {
+                Rebuild();
+            }
+
+            public override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+            {
+                // 分辨率/全屏/朝向变化才重建；这些值绝大多数帧都不变。
+                if (Screen.width == _lastWidth
+                    && Screen.height == _lastHeight
+                    && Screen.fullScreenMode == _lastFullScreenMode
+                    && Screen.orientation == _lastOrientation)
+                {
+                    return;
+                }
+
+                Rebuild();
+            }
+
             protected override void BuildWindow(VisualElement root)
             {
+                _lastWidth = Screen.width;
+                _lastHeight = Screen.height;
+                _lastFullScreenMode = Screen.fullScreenMode;
+                _lastOrientation = Screen.orientation;
+
                 VisualElement section = CreateSection("Screen Information", out VisualElement card);
                 card.Add(CreateRow("Current Resolution", GetResolutionString(Screen.currentResolution)));
                 card.Add(CreateRow("Screen Width", Utility.Text.Format("{0} px / {1:F2} in / {2:F2} cm", Screen.width, Utility.Converter.GetInchesFromPixels(Screen.width), Utility.Converter.GetCentimetersFromPixels(Screen.width))));

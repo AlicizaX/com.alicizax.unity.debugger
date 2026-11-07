@@ -1,4 +1,4 @@
-﻿using AlicizaX;
+using AlicizaX;
 
 namespace AlicizaX.Debugger
 {
@@ -43,7 +43,7 @@ namespace AlicizaX.Debugger
         /// </summary>
         protected override void OnInitialize() { }
 
-        protected override void OnDestroyService()
+        protected override void OnDispose()
         {
             m_ActiveWindow = false;
             m_DebuggerWindowRoot.Shutdown();
@@ -68,8 +68,29 @@ namespace AlicizaX.Debugger
                 throw new GameFrameworkException("Debugger window is invalid.");
             }
 
-            m_DebuggerWindowRoot.RegisterDebuggerWindow(path, debuggerWindow);
+            if (!TryRegisterDebuggerWindow(path, debuggerWindow, args))
+            {
+                throw new GameFrameworkException("Debugger window has been registered.");
+            }
+        }
+
+        /// <summary>
+        /// 按路径注册窗口；路径已被占用时返回 false，供自动发现路径"告警并跳过"。
+        /// </summary>
+        internal bool TryRegisterDebuggerWindow(string path, IDebuggerWindow debuggerWindow, params object[] args)
+        {
+            if (string.IsNullOrEmpty(path) || debuggerWindow == null)
+            {
+                return false;
+            }
+
+            if (!m_DebuggerWindowRoot.TryRegister(path, debuggerWindow))
+            {
+                return false;
+            }
+
             debuggerWindow.Initialize(args);
+            return true;
         }
 
         /// <summary>

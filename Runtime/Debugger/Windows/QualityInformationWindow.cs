@@ -5,10 +5,17 @@ namespace AlicizaX.Debugger
 {
     public sealed partial class DebuggerComponent
     {
-        private sealed class QualityInformationWindow : PollingDebuggerWindowBase
+                [DebuggerWindow("Information/Other/Quality")]
+        private sealed class QualityInformationWindow : ScrollableDebuggerWindowBase
         {
             private bool m_ApplyExpensiveChanges;
             private Toggle m_applyExpensiveToggle;
+
+            public override void OnEnter()
+            {
+                Rebuild();
+            }
+
             protected override void BuildWindow(VisualElement root)
             {
                 VisualElement qualitySection = CreateSection("Quality Level", out VisualElement qualityCard);
@@ -20,7 +27,7 @@ namespace AlicizaX.Debugger
                 for (int i = 0; i < names.Length; i++)
                 {
                     int qualityIndex = i;
-                    qualityButtons.Add(CreateActionButton(names[i], () => QualitySettings.SetQualityLevel(qualityIndex, m_ApplyExpensiveChanges),
+                    qualityButtons.Add(CreateActionButton(names[i], () => ApplyQualityLevel(qualityIndex),
                         QualitySettings.GetQualityLevel() == qualityIndex ? DebuggerTheme.ButtonSurfaceActive : DebuggerTheme.ButtonSurface));
                 }
 
@@ -61,6 +68,12 @@ namespace AlicizaX.Debugger
                 otherCard.Add(CreateRow("Async Upload Buffer Size", Utility.Text.Format("{0} MB", QualitySettings.asyncUploadBufferSize)));
                 otherCard.Add(CreateRow("Async Upload Persistent Buffer", QualitySettings.asyncUploadPersistentBuffer.ToString()));
                 root.Add(otherSection);
+            }
+
+            private void ApplyQualityLevel(int qualityIndex)
+            {
+                QualitySettings.SetQualityLevel(qualityIndex, m_ApplyExpensiveChanges);
+                RequestRebuild();
             }
         }
     }

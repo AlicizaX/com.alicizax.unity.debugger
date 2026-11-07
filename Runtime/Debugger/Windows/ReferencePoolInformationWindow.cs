@@ -26,7 +26,7 @@ namespace AlicizaX.Debugger
 
             protected override void BuildWindow(VisualElement root)
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 int infoCount = FetchInfos();
 
                 VisualElement overview = CreateSection("Memory Pool Overview", out VisualElement overviewCard);

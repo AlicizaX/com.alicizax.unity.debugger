@@ -7,10 +7,34 @@ namespace AlicizaX.Debugger
 {
     public sealed partial class DebuggerComponent
     {
-        private sealed class EnvironmentInformationWindow : PollingDebuggerWindowBase
+                [DebuggerWindow("Information/Environment")]
+        private sealed class EnvironmentInformationWindow : ScrollableDebuggerWindowBase
         {
+            private bool _lastIsFocused;
+            private NetworkReachability _lastReachability;
+
+            public override void OnEnter()
+            {
+                Rebuild();
+            }
+
+            public override void OnUpdate(float elapseSeconds, float realElapseSeconds)
+            {
+                // 只有焦点/网络可达性会变，其余是进程级常量。
+                if (Application.isFocused == _lastIsFocused
+                    && Application.internetReachability == _lastReachability)
+                {
+                    return;
+                }
+
+                Rebuild();
+            }
+
             protected override void BuildWindow(VisualElement root)
             {
+                _lastIsFocused = Application.isFocused;
+                _lastReachability = Application.internetReachability;
+
                 VisualElement section = CreateSection("Environment Information", out VisualElement card);
                 card.Add(CreateRow("Product Name", Application.productName));
                 card.Add(CreateRow("Company Name", Application.companyName));

@@ -14,6 +14,7 @@ namespace AlicizaX.Debugger.Editor
         private SerializedProperty _windowOpacity;
         private SerializedProperty _panelSettings;
         private SerializedProperty _font;
+        private SerializedProperty _autoRegisterAssemblyNames;
         private SerializedProperty _commandWindow;
         private SerializedProperty _commandAssemblyNames;
         private SerializedProperty _commandEnableAutocomplete;
@@ -23,8 +24,8 @@ namespace AlicizaX.Debugger.Editor
         private SerializedProperty _commandSubmitKey;
         private SerializedProperty _commandNextSuggestionKey;
         private SerializedProperty _commandPreviousSuggestionKey;
-        private SerializedProperty _commandNextHistoryKey;
-        private SerializedProperty _commandPreviousHistoryKey;
+        private SerializedProperty _commandHistoryPreviousKey;
+        private SerializedProperty _commandHistoryNextKey;
         private SerializedProperty _commandCancelActionsKey;
 
         private void OnEnable()
@@ -37,6 +38,12 @@ namespace AlicizaX.Debugger.Editor
             if (_activeWindow == null)
             {
                 CacheProperties();
+            }
+
+            // 字段名是字符串绑定的；重命名后行会静默消失，这里显式报一次错。
+            if (_activeWindow == null)
+            {
+                Debug.LogError("Debugger inspector: serialized field 'm_ActiveWindow' was not found. The inspector layout needs updating.");
             }
 
             AlicizaPanel panel = AlicizaEditorUI.CreatePanel(null);
@@ -52,6 +59,7 @@ namespace AlicizaX.Debugger.Editor
             _windowOpacity = Find("m_WindowOpacity");
             _panelSettings = Find("m_PanelSettings");
             _font = Find("m_Font");
+            _autoRegisterAssemblyNames = Find("m_AutoRegisterAssemblyNames");
             _commandWindow = Find("m_CommandWindow");
 
             if (_commandWindow == null)
@@ -67,8 +75,8 @@ namespace AlicizaX.Debugger.Editor
             _commandSubmitKey = _commandWindow.FindPropertyRelative("m_SubmitCommandKey");
             _commandNextSuggestionKey = _commandWindow.FindPropertyRelative("m_SelectNextSuggestionKey");
             _commandPreviousSuggestionKey = _commandWindow.FindPropertyRelative("m_SelectPreviousSuggestionKey");
-            _commandNextHistoryKey = _commandWindow.FindPropertyRelative("m_NextCommandKey");
-            _commandPreviousHistoryKey = _commandWindow.FindPropertyRelative("m_PreviousCommandKey");
+            _commandHistoryPreviousKey = _commandWindow.FindPropertyRelative("m_HistoryPreviousKey");
+            _commandHistoryNextKey = _commandWindow.FindPropertyRelative("m_HistoryNextKey");
             _commandCancelActionsKey = _commandWindow.FindPropertyRelative("m_CancelActionsKey");
         }
 
@@ -79,6 +87,11 @@ namespace AlicizaX.Debugger.Editor
             AddObjectRow(parent, "Font", _font, typeof(Font));
             AddToggleRow(parent, "Enable Snap", _enableFloatingToggleSnap);
             AddOpacityRow(parent);
+
+            if (_autoRegisterAssemblyNames != null)
+            {
+                parent.Add(new AlicizaStringListField(_autoRegisterAssemblyNames, "Auto Register Assemblies"));
+            }
         }
 
         private void BuildCommandSection(VisualElement parent)
@@ -100,8 +113,8 @@ namespace AlicizaX.Debugger.Editor
             AddKeyRow(parent, "Submit Key", _commandSubmitKey);
             AddComboRow(parent, "Next Suggestion", _commandNextSuggestionKey);
             AddComboRow(parent, "Prev Suggestion", _commandPreviousSuggestionKey);
-            AddKeyRow(parent, "Next History", _commandNextHistoryKey);
-            AddKeyRow(parent, "Prev History", _commandPreviousHistoryKey);
+            AddKeyRow(parent, "Previous History", _commandHistoryPreviousKey);
+            AddKeyRow(parent, "Next History", _commandHistoryNextKey);
             AddComboRow(parent, "Cancel Actions", _commandCancelActionsKey);
         }
 

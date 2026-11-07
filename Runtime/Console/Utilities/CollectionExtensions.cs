@@ -83,13 +83,32 @@ namespace AlicizaX.Console.Utilities
 
         public static T LastOr<T>(this IEnumerable<T> source, T value)
         {
-            try
+            // 不用 try/catch + Last()：空序列靠异常返回默认值会吞掉真实错误，
+            // 而且 Last() 对非 IList 会整段枚举。
+            if (source is IReadOnlyList<T> readOnlyList)
             {
-                return source.Last();
+                return readOnlyList.Count > 0 ? readOnlyList[readOnlyList.Count - 1] : value;
             }
-            catch (InvalidOperationException)
+
+            if (source is IList<T> list)
             {
-                return value;
+                return list.Count > 0 ? list[list.Count - 1] : value;
+            }
+
+            using (IEnumerator<T> enumerator = source.GetEnumerator())
+            {
+                if (!enumerator.MoveNext())
+                {
+                    return value;
+                }
+
+                T last = enumerator.Current;
+                while (enumerator.MoveNext())
+                {
+                    last = enumerator.Current;
+                }
+
+                return last;
             }
         }
 

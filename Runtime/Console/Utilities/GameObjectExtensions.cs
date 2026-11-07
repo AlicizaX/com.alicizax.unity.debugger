@@ -7,8 +7,25 @@ namespace AlicizaX.Console.Utilities
 {
     public static class GameObjectExtensions
     {
+        private const int MaxCachedGameObjects = 64;
+
         private static readonly Dictionary<string, GameObject> GameObjectCache = new Dictionary<string, GameObject>();
         private static readonly List<GameObject> RootGameObjectBuffer = new List<GameObject>();
+
+        /// <summary>
+        /// 缓存查找结果。键来自命令参数（任意文本），必须设上限，
+        /// 否则一次会话里每个不同的名字都会永久占一个条目。
+        /// </summary>
+        private static GameObject Cache(string name, GameObject obj)
+        {
+            if (GameObjectCache.Count >= MaxCachedGameObjects)
+            {
+                GameObjectCache.Clear();
+            }
+
+            GameObjectCache[name] = obj;
+            return obj;
+        }
 
         public static GameObject Find(string name, bool includeInactive = false)
         {
@@ -23,7 +40,7 @@ namespace AlicizaX.Console.Utilities
             obj = GameObject.Find(name);
             if (obj)
             {
-                return GameObjectCache[name] = obj;
+                return Cache(name, obj);
             }
 
             if (includeInactive)
@@ -42,7 +59,7 @@ namespace AlicizaX.Console.Utilities
                             obj = Find(name, root);
                             if (obj)
                             {
-                                return GameObjectCache[name] = obj;
+                                return Cache(name, obj);
                             }
                         }
                     }
@@ -55,7 +72,7 @@ namespace AlicizaX.Console.Utilities
 
                 if (obj)
                 {
-                    return GameObjectCache[name] = obj;
+                    return Cache(name, obj);
                 }
             }
 

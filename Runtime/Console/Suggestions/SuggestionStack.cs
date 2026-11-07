@@ -20,7 +20,8 @@ namespace AlicizaX.Console
         /// <summary>
         /// 候选栈里最上层的有效候选集。
         /// </summary>
-        public SuggestionSet TopmostSuggestionSet => _suggestionSets.LastOrDefault();
+        public SuggestionSet TopmostSuggestionSet =>
+            _suggestionSets.Count > 0 ? _suggestionSets[_suggestionSets.Count - 1] : null;
 
         /// <summary>
         /// 最上层候选集里选中的候选项；没有则为空。
@@ -219,17 +220,19 @@ namespace AlicizaX.Console
                 return string.Empty;
             }
 
-            IEnumerable<IAlicizaXConsoleSuggestion> suggestionChain =
-                _suggestionSets
-                    .Select(x => x.CurrentSelection)
-                    .Where(x => x != null);
-
+            // 逐层拼补全；不用 Select/Where 链，避免每次按键产生迭代器与闭包。
             SuggestionContext context = _suggestionSets[0].Context;
             Utf16ValueStringBuilder stringBuilder = ZString.CreateStringBuilder();
             try
             {
-                foreach (IAlicizaXConsoleSuggestion suggestion in suggestionChain)
+                for (int i = 0; i < _suggestionSets.Count; i++)
                 {
+                    IAlicizaXConsoleSuggestion suggestion = _suggestionSets[i].CurrentSelection;
+                    if (suggestion == null)
+                    {
+                        continue;
+                    }
+
                     string part = context.Prompt;
                     SuggestionContext? newContext = suggestion.GetInnerSuggestionContext(context);
 

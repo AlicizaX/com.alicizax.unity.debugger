@@ -8,7 +8,7 @@ namespace AlicizaX.Console.Actions
     public class WaitKey : WaitUntil
     {
         /// <param name="key">要等待的按键。</param>
-        public WaitKey(KeyCode key) : base(() => InputHelper.GetKeyDown(key))
+        public WaitKey(KeyCode key) : base(() => InputKeys.GetKeyDown(key))
         {
 
         }

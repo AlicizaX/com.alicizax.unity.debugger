@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using AlicizaX;
 using UnityEngine;
@@ -17,6 +17,7 @@ namespace AlicizaX.Debugger
             private LogType m_LogType;
             private string m_LogMessage;
             private string m_StackTrack;
+            private string m_DisplayText;
 
             /// <summary>
             /// 初始化日志记录结点的新实例。
@@ -28,6 +29,7 @@ namespace AlicizaX.Debugger
                 m_LogType = LogType.Error;
                 m_LogMessage = null;
                 m_StackTrack = null;
+                m_DisplayText = null;
             }
 
             /// <summary>
@@ -86,6 +88,34 @@ namespace AlicizaX.Debugger
             }
 
             /// <summary>
+            /// 获取列表里单行显示的日志文本。首次访问时生成并缓存，
+            /// 避免列表每次重绑都重新格式化与替换换行。
+            /// </summary>
+            public string DisplayText
+            {
+                get
+                {
+                    if (m_DisplayText == null)
+                    {
+                        m_DisplayText = BuildDisplayText();
+                    }
+
+                    return m_DisplayText;
+                }
+            }
+
+            private string BuildDisplayText()
+            {
+                string message = m_LogMessage ?? string.Empty;
+                if (message.IndexOf('\n') >= 0 || message.IndexOf('\r') >= 0)
+                {
+                    message = message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+                }
+
+                return Utility.Text.Format("[{0:HH:mm:ss.fff}][{1}] {2}", m_LogTime.ToLocalTime(), m_LogFrameCount, message);
+            }
+
+            /// <summary>
             /// 创建日志记录结点。
             /// </summary>
             /// <param name="logType">日志类型。</param>
@@ -113,6 +143,7 @@ namespace AlicizaX.Debugger
                 m_LogType = LogType.Error;
                 m_LogMessage = null;
                 m_StackTrack = null;
+                m_DisplayText = null;
             }
         }
     }

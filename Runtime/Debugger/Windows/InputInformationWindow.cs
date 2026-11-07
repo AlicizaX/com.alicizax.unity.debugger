@@ -41,7 +41,7 @@ namespace AlicizaX.Debugger
                 card.Add(CreateRow("Simulate Mouse With Touches", Input.simulateMouseWithTouches.ToString()));
                 card.Add(CreateRow("Multi Touch Enabled", Input.multiTouchEnabled.ToString()));
                 card.Add(CreateRow("Touch Count", Input.touchCount.ToString()));
-                card.Add(CreateRow("Touches", GetTouchesString(Input.touches)));
+                card.Add(CreateRow("Touches", GetTouchesString(Input.touchCount)));
                 root.Add(section);
             }
 
@@ -75,7 +75,7 @@ namespace AlicizaX.Debugger
                 VisualElement section = CreateSection("Input Acceleration", out VisualElement card);
                 card.Add(CreateRow("Acceleration", Input.acceleration.ToString()));
                 card.Add(CreateRow("Acceleration Event Count", Input.accelerationEventCount.ToString()));
-                card.Add(CreateRow("Acceleration Events", GetAccelerationEventsString(Input.accelerationEvents)));
+                card.Add(CreateRow("Acceleration Events", GetAccelerationEventsString(Input.accelerationEventCount)));
                 root.Add(section);
             }
 
@@ -131,18 +131,19 @@ namespace AlicizaX.Debugger
                 return Utility.Text.Format("{0}, {1}, {2}, {3}, {4}", touch.position, touch.deltaPosition, touch.rawPosition, touch.pressure, touch.phase);
             }
 
-            private string GetTouchesString(Touch[] touches)
+            private string GetTouchesString(int touchCount)
             {
                 using (var builder = Cysharp.Text.ZString.CreateStringBuilder())
                 {
-                    for (int i = 0; i < touches.Length; i++)
+                    // 读 count + GetTouch(i)：Input.touches 每次访问都会分配一个新数组。
+                    for (int i = 0; i < touchCount; i++)
                     {
                         if (i > 0)
                         {
                             builder.Append("; ");
                         }
 
-                        builder.Append(GetTouchString(touches[i]));
+                        builder.Append(GetTouchString(Input.GetTouch(i)));
                     }
 
                     return builder.ToString();
@@ -154,18 +155,19 @@ namespace AlicizaX.Debugger
                 return Utility.Text.Format("{0}, {1}", accelerationEvent.acceleration, accelerationEvent.deltaTime);
             }
 
-            private string GetAccelerationEventsString(AccelerationEvent[] accelerationEvents)
+            private string GetAccelerationEventsString(int accelerationEventCount)
             {
                 using (var builder = Cysharp.Text.ZString.CreateStringBuilder())
                 {
-                    for (int i = 0; i < accelerationEvents.Length; i++)
+                    // 同上：Input.accelerationEvents 每次访问都会分配新数组。
+                    for (int i = 0; i < accelerationEventCount; i++)
                     {
                         if (i > 0)
                         {
                             builder.Append("; ");
                         }
 
-                        builder.Append(GetAccelerationEventString(accelerationEvents[i]));
+                        builder.Append(GetAccelerationEventString(Input.GetAccelerationEvent(i)));
                     }
 
                     return builder.ToString();

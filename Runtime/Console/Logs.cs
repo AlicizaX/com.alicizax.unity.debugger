@@ -52,10 +52,11 @@ namespace AlicizaX.Console
         }
     }
 
-    public class LogStorage
+    public class LogStorage : IDisposable
     {
         private readonly List<AlicizaXConsoleLog> _consoleLogs = new List<AlicizaXConsoleLog>(10);
         private Utf16ValueStringBuilder _logTraceBuilder = ZString.CreateStringBuilder();
+        private bool _disposed;
 
         public int MaxStoredLogs { get; set; }
         public IReadOnlyList<AlicizaXConsoleLog> Logs => _consoleLogs;
@@ -125,6 +126,21 @@ namespace AlicizaX.Console
         public string GetLogString()
         {
             return _logTraceBuilder.ToString();
+        }
+
+        /// <summary>
+        /// 归还 ZString 的内部缓冲。控制器关闭时必须调用，否则缓冲高水位会一直保留到进程结束。
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _consoleLogs.Clear();
+            _logTraceBuilder.Dispose();
         }
     }
 }

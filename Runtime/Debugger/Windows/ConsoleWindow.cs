@@ -11,10 +11,20 @@ namespace AlicizaX.Debugger
         [Serializable]
         private sealed class ConsoleWindow : IDebuggerWindow
         {
+            // 日志洪峰时每帧一条日志，逐帧全量刷新会把 CPU 全花在重建列表上；
+            // 10 Hz 足够看出日志滚动，同时把刷新次数从"每帧"降到固定上限。
+            private const float ViewRefreshInterval = 0.1f;
+            private const string LockScrollSettingKey = "Debugger.Console.LockScroll";
+            private const string InfoFilterSettingKey = "Debugger.Console.InfoFilter";
+            private const string WarningFilterSettingKey = "Debugger.Console.WarningFilter";
+            private const string ErrorFilterSettingKey = "Debugger.Console.ErrorFilter";
+            private const string FatalFilterSettingKey = "Debugger.Console.FatalFilter";
+
             private readonly Queue<LogNode> m_LogNodes = new Queue<LogNode>();
             private readonly List<LogNode> _logNodeCache = new List<LogNode>(256);
             private readonly IList _listItems;
 
+            private float _viewRefreshCountdown;
             private int m_InfoCount;
             private int m_WarningCount;
             private int m_ErrorCount;
@@ -197,11 +207,11 @@ namespace AlicizaX.Debugger
             public void Initialize(params object[] args)
             {
                 Application.logMessageReceived += OnLogMessageReceived;
-                m_LockScroll = m_LastLockScroll = Utility.PlayerPrefsX.GetBool("Debugger.Console.LockScroll", true);
-                m_InfoFilter = m_LastInfoFilter = Utility.PlayerPrefsX.GetBool("Debugger.Console.InfoFilter", true);
-                m_WarningFilter = m_LastWarningFilter = Utility.PlayerPrefsX.GetBool("Debugger.Console.WarningFilter", true);
-                m_ErrorFilter = m_LastErrorFilter = Utility.PlayerPrefsX.GetBool("Debugger.Console.ErrorFilter", true);
-                m_FatalFilter = m_LastFatalFilter = Utility.PlayerPrefsX.GetBool("Debugger.Console.FatalFilter", true);
+                m_LockScroll = m_LastLockScroll = Utility.PlayerPrefsX.GetBool(LockScrollSettingKey, true);
+                m_InfoFilter = m_LastInfoFilter = Utility.PlayerPrefsX.GetBool(InfoFilterSettingKey, true);
+                m_WarningFilter = m_LastWarningFilter = Utility.PlayerPrefsX.GetBool(WarningFilterSettingKey, true);
+                m_ErrorFilter = m_LastErrorFilter = Utility.PlayerPrefsX.GetBool(ErrorFilterSettingKey, true);
+                m_FatalFilter = m_LastFatalFilter = Utility.PlayerPrefsX.GetBool(FatalFilterSettingKey, true);
                 _viewDirty = true;
             }
 
@@ -224,15 +234,23 @@ namespace AlicizaX.Debugger
             public void OnUpdate(float elapseSeconds, float realElapseSeconds)
             {
                 PersistSettingsIfNeeded();
-                if (_viewDirty)
+                if (!_viewDirty)
                 {
-                    RefreshView();
+                    return;
                 }
+
+                _viewRefreshCountdown -= realElapseSeconds;
+                if (_viewRefreshCountdown > 0f)
+                {
+                    return;
+                }
+
+                RefreshView();
             }
 
             public VisualElement CreateView()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 _root = new VisualElement();
                 _root.style.flexGrow = 1f;
                 _root.style.flexDirection = FlexDirection.Column;
@@ -324,7 +342,7 @@ namespace AlicizaX.Debugger
 
             private VisualElement CreateToolbar()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 VisualElement toolbar = ScrollableDebuggerWindowBase.CreateToolbarRow();
                 toolbar.style.alignItems = Align.Center;
 
@@ -352,7 +370,7 @@ namespace AlicizaX.Debugger
 
             private VisualElement MakeLogItem()
             {
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
                 Label label = new Label();
                 if (DebuggerComponent.Instance != null)
                 {
@@ -386,14 +404,14 @@ namespace AlicizaX.Debugger
                 }
 
                 LogNode logNode = _logNodeCache[index];
-                label.text = GetLogString(logNode);
-                label.style.color = GetLogStringColor(logNode.LogType);
+                Color logColor = GetLogStringColor(logNode.LogType);
                 bool isSelected = _logListView != null && index == _logListView.selectedIndex;
-                float scale = DebuggerComponent.Instance != null ? DebuggerComponent.Instance.GetUiScale() : 1f;
+                float scale = DebuggerComponent.UiScale;
+                label.text = logNode.DisplayText;
                 label.style.backgroundColor = isSelected ? DebuggerTheme.SelectionFill : Color.clear;
                 label.style.borderLeftWidth = 3f * scale;
                 label.style.borderLeftColor = isSelected ? DebuggerTheme.Accent : Color.clear;
-                label.style.color = isSelected ? DebuggerTheme.PrimaryText : GetLogStringColor(logNode.LogType);
+                label.style.color = isSelected ? DebuggerTheme.PrimaryText : logColor;
             }
 
             private void OnSelectionChanged(IEnumerable<object> selection)
@@ -457,32 +475,6 @@ namespace AlicizaX.Debugger
                 UpdateStackField();
             }
 
-            public void RefreshCount()
-            {
-                m_InfoCount = 0;
-                m_WarningCount = 0;
-                m_ErrorCount = 0;
-                m_FatalCount = 0;
-                foreach (LogNode logNode in m_LogNodes)
-                {
-                    switch (logNode.LogType)
-                    {
-                        case LogType.Log:
-                            m_InfoCount++;
-                            break;
-                        case LogType.Warning:
-                            m_WarningCount++;
-                            break;
-                        case LogType.Error:
-                            m_ErrorCount++;
-                            break;
-                        case LogType.Exception:
-                            m_FatalCount++;
-                            break;
-                    }
-                }
-            }
-
             public void GetRecentLogs(List<LogNode> results)
             {
                 if (results == null)
@@ -536,31 +528,31 @@ namespace AlicizaX.Debugger
                 if (m_LastLockScroll != m_LockScroll)
                 {
                     m_LastLockScroll = m_LockScroll;
-                    Utility.PlayerPrefsX.SetBool("Debugger.Console.LockScroll", m_LockScroll);
+                    Utility.PlayerPrefsX.SetBool(LockScrollSettingKey, m_LockScroll);
                 }
 
                 if (m_LastInfoFilter != m_InfoFilter)
                 {
                     m_LastInfoFilter = m_InfoFilter;
-                    Utility.PlayerPrefsX.SetBool("Debugger.Console.InfoFilter", m_InfoFilter);
+                    Utility.PlayerPrefsX.SetBool(InfoFilterSettingKey, m_InfoFilter);
                 }
 
                 if (m_LastWarningFilter != m_WarningFilter)
                 {
                     m_LastWarningFilter = m_WarningFilter;
-                    Utility.PlayerPrefsX.SetBool("Debugger.Console.WarningFilter", m_WarningFilter);
+                    Utility.PlayerPrefsX.SetBool(WarningFilterSettingKey, m_WarningFilter);
                 }
 
                 if (m_LastErrorFilter != m_ErrorFilter)
                 {
                     m_LastErrorFilter = m_ErrorFilter;
-                    Utility.PlayerPrefsX.SetBool("Debugger.Console.ErrorFilter", m_ErrorFilter);
+                    Utility.PlayerPrefsX.SetBool(ErrorFilterSettingKey, m_ErrorFilter);
                 }
 
                 if (m_LastFatalFilter != m_FatalFilter)
                 {
                     m_LastFatalFilter = m_FatalFilter;
-                    Utility.PlayerPrefsX.SetBool("Debugger.Console.FatalFilter", m_FatalFilter);
+                    Utility.PlayerPrefsX.SetBool(FatalFilterSettingKey, m_FatalFilter);
                 }
             }
 
@@ -641,6 +633,7 @@ namespace AlicizaX.Debugger
 
                 UpdateStackField();
                 _viewDirty = false;
+                _viewRefreshCountdown = ViewRefreshInterval;
             }
 
             private bool PassFilter(LogNode logNode)
@@ -726,17 +719,6 @@ namespace AlicizaX.Debugger
                         m_FatalCount = Mathf.Max(0, m_FatalCount - 1);
                         break;
                 }
-            }
-
-            private string GetLogString(LogNode logNode)
-            {
-                string message = logNode.LogMessage ?? string.Empty;
-                if (message.IndexOf('\n') >= 0 || message.IndexOf('\r') >= 0)
-                {
-                    message = message.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
-                }
-
-                return Utility.Text.Format("[{0:HH:mm:ss.fff}][{1}] {2}", logNode.LogTime.ToLocalTime(), logNode.LogFrameCount, message);
             }
 
             internal Color GetLogStringColor(LogType logType)

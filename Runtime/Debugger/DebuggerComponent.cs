@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Cysharp.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.TextCore.Text;
@@ -41,6 +40,7 @@ namespace AlicizaX.Debugger
         private const float ToggleDoubleClickMaxDistance = 24f;
         private const float ToggleSnapSmoothTime = 0.08f;
         private const float ToggleSnapStopDistance = 0.5f;
+        private const float WindowScaleApplyDelay = 0.15f;
         private const float SidebarRowRadius = 8f;
         private const float SidebarRowGap = 3f;
         private const float SidebarSectionGap = 10f;
@@ -52,15 +52,6 @@ namespace AlicizaX.Debugger
         internal static readonly Rect DefaultWindowRect = new Rect(24f, 96f, 1320f, 760f);
         internal static readonly float DefaultWindowScale = 1.2f;
 
-        private static readonly Dictionary<LogType, Color> LogColors = new Dictionary<LogType, Color>
-        {
-            { LogType.Log, DebuggerTheme.PrimaryText },
-            { LogType.Warning, DebuggerTheme.Warning },
-            { LogType.Error, DebuggerTheme.Danger },
-            { LogType.Exception, DebuggerTheme.Fatal },
-            { LogType.Assert, DebuggerTheme.Danger },
-        };
-
         [SerializeField] private DebuggerActiveWindowType m_ActiveWindow = DebuggerActiveWindowType.AlwaysOpen;
         [SerializeField] private bool m_ShowFullWindow;
         [SerializeField, Range(0.2f, 1f)] private float m_WindowOpacity = 1f;
@@ -70,27 +61,23 @@ namespace AlicizaX.Debugger
         [SerializeField] private Font m_Font;
         [SerializeField] private ConsoleWindow m_ConsoleWindow = new ConsoleWindow();
         [SerializeField] private CommandWindow m_CommandWindow = new CommandWindow();
+        [Tooltip("额外扫描 [DebuggerWindow] 的程序集名。本包程序集始终会被扫描。")]
+        [SerializeField] private string[] m_AutoRegisterAssemblyNames = new string[0];
 
-        private readonly List<DebuggerMenuNode> _menuRoots = new List<DebuggerMenuNode>(16);
-        private readonly List<IDebuggerWindow> _registeredWindows = new List<IDebuggerWindow>(32);
-        private readonly Dictionary<IDebuggerWindow, DebuggerMenuNode> _nodeByWindow = new Dictionary<IDebuggerWindow, DebuggerMenuNode>(32);
         private readonly Dictionary<IDebuggerWindow, VisualElement> _viewByWindow = new Dictionary<IDebuggerWindow, VisualElement>(32);
-        private readonly Dictionary<DebuggerMenuNode, SidebarRowState> _sidebarRowStates = new Dictionary<DebuggerMenuNode, SidebarRowState>(64);
-        private readonly Dictionary<DebuggerMenuNode, VisualElement> _sidebarChildContainers = new Dictionary<DebuggerMenuNode, VisualElement>(32);
+        private readonly Dictionary<string, SidebarRowState> _sidebarRowStates = new Dictionary<string, SidebarRowState>(64);
+        private readonly Dictionary<string, VisualElement> _sidebarChildContainers = new Dictionary<string, VisualElement>(32);
+        private readonly Dictionary<string, bool> _expansionByPath = new Dictionary<string, bool>(32);
+        private bool _sidebarDirty;
 
         private IDebuggerService _mDebuggerService;
+        private DebuggerService _debuggerService;
         private Rect m_IconRect = DefaultIconRect;
         private Rect m_WindowRect = DefaultWindowRect;
         private float m_WindowScale = DefaultWindowScale;
 
-        private SystemInformationWindow m_SystemInformationWindow = new SystemInformationWindow();
-        private EnvironmentInformationWindow m_EnvironmentInformationWindow = new EnvironmentInformationWindow();
-        private ScreenInformationWindow m_ScreenInformationWindow = new ScreenInformationWindow();
-        private GraphicsInformationWindow m_GraphicsInformationWindow = new GraphicsInformationWindow();
         private InputInformationWindow m_InputInformationWindow = new InputInformationWindow();
-        private SceneInformationWindow m_SceneInformationWindow = new SceneInformationWindow();
         private TimeInformationWindow m_TimeInformationWindow = new TimeInformationWindow();
-        private QualityInformationWindow m_QualityInformationWindow = new QualityInformationWindow();
         private ProfilerInformationWindow m_ProfilerInformationWindow = new ProfilerInformationWindow();
         private RuntimeMemorySummaryWindow m_RuntimeMemorySummaryWindow = new RuntimeMemorySummaryWindow();
         private RuntimeMemoryInformationWindow<Object> m_RuntimeMemoryAllInformationWindow = new RuntimeMemoryInformationWindow<Object>();
@@ -128,7 +115,7 @@ namespace AlicizaX.Debugger
         private Button _closeButton;
         private VisualElement _resizeHandle;
         private IDebuggerWindow _activeWindow;
-        private DebuggerMenuNode _activeNode;
+        private string _activePath;
         private VisualElement _activeSidebarElement;
 
         private Vector2 _dragPointerStart;
@@ -143,6 +130,11 @@ namespace AlicizaX.Debugger
         private Vector2 _toggleSnapVelocity;
         private float _lastToggleTapTime = -1f;
         private Vector2 _lastToggleTapPosition;
+        private float _toggleFpsValue = float.NegativeInfinity;
+        private Color _toggleFpsColor;
+        private bool _hasToggleFpsValue;
+        private bool _isWindowScaleApplyPending;
+        private float _windowScaleApplyAt;
         private int _lastScreenWidth;
         private int _lastScreenHeight;
         private float _lastSavedIconX;
@@ -309,8 +301,12 @@ namespace AlicizaX.Debugger
 
                 m_WindowScale = clampedValue;
                 ApplyWindowScale();
-                RebuildRuntimeVisualTree();
                 SaveLayoutScaleSettings();
+
+                // 视觉树里所有尺寸都在构建时按 UI 缩放烘焙，改缩放必须重建整棵树；
+                // 设置面板的滑杆拖动会逐帧触发，这里合并成"停止拖动后重建一次"。
+                _isWindowScaleApplyPending = true;
+                _windowScaleApplyAt = Time.unscaledTime + WindowScaleApplyDelay;
             }
         }
 
@@ -318,22 +314,26 @@ namespace AlicizaX.Debugger
         {
             _instance = this;
 
-            if (!AppServices.App.TryGet<IDebuggerService>(out _mDebuggerService))
+            // AppServices.Register 在服务容器未创建时会抛异常，先显式判定前置条件，
+            // 避免把"框架没启动"表现成 Awake 里的 InvalidOperationException。
+            if (!AppServices.IsAvailable)
             {
-            _mDebuggerService = AppServices.App.Register<IDebuggerService>(new DebuggerService());
-            }
-
-            if (_mDebuggerService == null)
-            {
-                Log.Error("Debugger service is invalid.");
+                Log.Error("Debugger requires an initialized service registry. Component disabled.");
                 enabled = false;
                 return;
             }
 
+            if (!AppServices.TryGet<IDebuggerService>(out _mDebuggerService))
+            {
+                _mDebuggerService = AppServices.Register<IDebuggerService>(new DebuggerService());
+            }
+
+            _debuggerService = _mDebuggerService as DebuggerService;
+
             m_FpsCounter = new FpsCounter(0.5f);
             m_StatsOverlay = new StatsOverlay(this);
             LoadLayoutSettings();
-            EnsureRuntimePanel();
+            BuildRuntimePanel();
         }
 
         private void OnValidate()
@@ -371,6 +371,12 @@ namespace AlicizaX.Debugger
         private void Start()
         {
             RegisterBuiltInWindows();
+            RegisterDiscoveredWindows();
+            if (_sidebarDirty)
+            {
+                RebuildSidebar();
+            }
+
             ApplyActiveMode();
             m_ShowFullWindow = false;
             SyncWindowVisibility();
@@ -384,6 +390,12 @@ namespace AlicizaX.Debugger
             }
 
             m_StatsOverlay?.Tick(Time.unscaledDeltaTime);
+
+            ApplyPendingWindowScale();
+            if (_sidebarDirty)
+            {
+                RebuildSidebar();
+            }
 
             UpdateToggleState();
             UpdateToggleSnapAnimation(Time.unscaledDeltaTime);
@@ -420,17 +432,22 @@ namespace AlicizaX.Debugger
                 _activeWindow = null;
             }
 
-            for (int i = _registeredWindows.Count - 1; i >= 0; i--)
+            if (_mDebuggerService?.DebuggerWindowRoot is DebuggerWindowGroup root)
             {
-                _registeredWindows[i].Shutdown();
+                List<string> windowPaths = new List<string>(32);
+                root.CollectWindowPaths(windowPaths);
+                for (int i = 0; i < windowPaths.Count; i++)
+                {
+                    // 解除注册会一并 Shutdown 窗口。组件销毁后必须归还路径，
+                    // 否则同一服务容器内重建组件时注册会抛"Debugger window has been registered."。
+                    _mDebuggerService.UnregisterDebuggerWindow(windowPaths[i]);
+                }
             }
 
-            _registeredWindows.Clear();
             _viewByWindow.Clear();
-            _nodeByWindow.Clear();
             _sidebarRowStates.Clear();
             _sidebarChildContainers.Clear();
-            _menuRoots.Clear();
+            _expansionByPath.Clear();
 
             if (m_StatsOverlay != null)
             {
@@ -482,31 +499,31 @@ namespace AlicizaX.Debugger
             }
 
             _mDebuggerService.RegisterDebuggerWindow(path, debuggerWindow, args);
-            _registeredWindows.Add(debuggerWindow);
-            RegisterMenuPath(path, debuggerWindow);
-            RebuildSidebar();
+            _sidebarDirty = true;
         }
 
         public bool UnregisterDebuggerWindow(string path)
         {
             IDebuggerWindow window = GetDebuggerWindow(path);
-            bool result = _mDebuggerService != null && _mDebuggerService.UnregisterDebuggerWindow(path);
-            if (!result || window == null)
+            if (window == null || _mDebuggerService == null)
             {
                 return false;
             }
 
-            _registeredWindows.Remove(window);
+            if (!_mDebuggerService.UnregisterDebuggerWindow(path))
+            {
+                return false;
+            }
+
             _viewByWindow.Remove(window);
-            RemoveMenuWindow(window);
             if (ReferenceEquals(_activeWindow, window))
             {
                 _activeWindow = null;
-                _activeNode = null;
+                _activePath = null;
                 _contentHost?.Clear();
             }
 
-            RebuildSidebar();
+            _sidebarDirty = true;
             return true;
         }
 
@@ -540,6 +557,7 @@ namespace AlicizaX.Debugger
             }
             WindowRect = DefaultWindowRect;
             WindowScale = DefaultWindowScale;
+            RebuildRuntimeVisualTree();
             SaveLayoutSettings();
         }
 
@@ -648,11 +666,22 @@ namespace AlicizaX.Debugger
             _lastSavedEnableFloatingToggleSnap = m_EnableFloatingToggleSnap;
         }
 
+        /// <summary>
+        /// 获取最近的日志结点。
+        /// </summary>
+        /// <remarks>
+        /// 返回值是 MemoryPool 复用的对象：日志被裁剪或再次入队时会被 <c>Clear()</c> 并重新使用。
+        /// 调用方只能在当前帧读取，不得跨帧缓存这些引用。
+        /// </remarks>
         public void GetRecentLogs(List<LogNode> results)
         {
             m_ConsoleWindow.GetRecentLogs(results);
         }
 
+        /// <summary>
+        /// 获取最近的日志结点（最多 <paramref name="count"/> 条）。
+        /// </summary>
+        /// <remarks>返回的是池化对象，生命周期同上：只在当前帧有效。</remarks>
         public void GetRecentLogs(List<LogNode> results, int count)
         {
             m_ConsoleWindow.GetRecentLogs(results, count);
@@ -662,14 +691,8 @@ namespace AlicizaX.Debugger
         {
             RegisterDebuggerWindow("Console", m_ConsoleWindow);
             RegisterDebuggerWindow("Command", m_CommandWindow);
-            RegisterDebuggerWindow("Information/System", m_SystemInformationWindow);
-            RegisterDebuggerWindow("Information/Environment", m_EnvironmentInformationWindow);
-            RegisterDebuggerWindow("Information/Screen", m_ScreenInformationWindow);
-            RegisterDebuggerWindow("Information/Graphics", m_GraphicsInformationWindow);
             RegisterDebuggerWindow("Information/Input", m_InputInformationWindow);
-            RegisterDebuggerWindow("Information/Other/Scene", m_SceneInformationWindow);
             RegisterDebuggerWindow("Information/Other/Time", m_TimeInformationWindow);
-            RegisterDebuggerWindow("Information/Other/Quality", m_QualityInformationWindow);
             RegisterDebuggerWindow("Profiler/Summary", m_ProfilerInformationWindow);
             RegisterDebuggerWindow("Profiler/Memory/Summary", m_RuntimeMemorySummaryWindow);
             RegisterDebuggerWindow("Profiler/Memory/All", m_RuntimeMemoryAllInformationWindow);
@@ -686,6 +709,53 @@ namespace AlicizaX.Debugger
             RegisterDebuggerWindow("Profiler/Audio", m_AudioInformationWindow);
             RegisterDebuggerWindow("Profiler/Timer", m_TimerInformationWindow);
             RegisterDebuggerWindow("Other/Settings", m_SettingsWindow);
+        }
+
+        /// <summary>
+        /// 扫描带 <see cref="DebuggerWindowAttribute"/> 的窗口并注册；手动注册的路径优先生效。
+        /// </summary>
+        private void RegisterDiscoveredWindows()
+        {
+            if (_debuggerService == null)
+            {
+                Log.Warning("Debugger: auto-registration skipped, IDebuggerService is not the built-in implementation.");
+                return;
+            }
+
+            List<DebuggerWindowScanner.DiscoveredWindow> discovered = new List<DebuggerWindowScanner.DiscoveredWindow>(16);
+            DebuggerWindowScanner.Discover(m_AutoRegisterAssemblyNames, discovered);
+
+            for (int i = 0; i < discovered.Count; i++)
+            {
+                DebuggerWindowScanner.DiscoveredWindow candidate = discovered[i];
+
+                IDebuggerWindow window;
+                try
+                {
+                    // 内置窗口是 DebuggerComponent 的私有嵌套类型，必须允许非公开构造。
+                    window = (IDebuggerWindow)Activator.CreateInstance(candidate.Type, nonPublic: true);
+                }
+                catch (Exception e)
+                {
+                    Log.Warning(Utility.Text.Format(
+                        "Debugger: failed to create window '{0}' for path '{1}': {2}",
+                        candidate.Type.FullName,
+                        candidate.Path,
+                        e.Message));
+                    continue;
+                }
+
+                if (!_debuggerService.TryRegisterDebuggerWindow(candidate.Path, window))
+                {
+                    Log.Warning(Utility.Text.Format(
+                        "Debugger: path '{0}' is already registered, '{1}' was skipped.",
+                        candidate.Path,
+                        candidate.Type.FullName));
+                    continue;
+                }
+
+                _sidebarDirty = true;
+            }
         }
 
         private void ApplyActiveMode()
@@ -707,9 +777,9 @@ namespace AlicizaX.Debugger
             }
         }
 
-        private void EnsureRuntimePanel()
+        private void BuildRuntimePanel()
         {
-            EnsureEventSystem();
+            CreateEventSystem();
 
             _panelSettings = CreateRuntimePanelSettings();
             ApplyRuntimePanelSettings(_panelSettings);
@@ -754,16 +824,17 @@ namespace AlicizaX.Debugger
             panelSettings.fallbackDpi = 96f;
             panelSettings.clearColor = false;
             panelSettings.targetTexture = null;
-            panelSettings.textSettings = EnsureSafePanelTextSettings();
+            panelSettings.textSettings = ResolvePanelTextSettings();
         }
 
-        private PanelTextSettings EnsureSafePanelTextSettings()
+        private PanelTextSettings ResolvePanelTextSettings()
         {
             if (_panelTextSettings == null)
             {
                 _panelTextSettings = ScriptableObject.CreateInstance<PanelTextSettings>();
                 _panelTextSettings.name = "Debugger Runtime Panel TextSettings";
                 _panelTextSettings.hideFlags = HideFlags.HideAndDontSave;
+                _panelTextSettings.fallbackFontAssets = new System.Collections.Generic.List<FontAsset>();
             }
 
             FontAsset safeFont = ResolveSafeFontAsset();
@@ -772,7 +843,6 @@ namespace AlicizaX.Debugger
                 _panelTextSettings.defaultFontAsset = safeFont;
             }
 
-            _panelTextSettings.fallbackFontAssets = new System.Collections.Generic.List<FontAsset>();
             return _panelTextSettings;
         }
 
@@ -841,6 +911,7 @@ namespace AlicizaX.Debugger
             };
 #endif
 
+            Exception fontCreationError = null;
             for (int i = 0; i < candidates.Length; i++)
             {
                 try
@@ -853,8 +924,9 @@ namespace AlicizaX.Debugger
                         return font;
                     }
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    fontCreationError = e;
                 }
             }
 
@@ -881,14 +953,21 @@ namespace AlicizaX.Debugger
                                 return font;
                             }
                         }
-                        catch (Exception)
+                        catch (Exception e)
                         {
+                            fontCreationError = e;
                         }
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                fontCreationError = e;
+            }
+
+            if (fontCreationError != null)
+            {
+                Log.Warning(Utility.Text.Format("Debugger could not create an OS font, falling back to builtin Arial: {0}", fontCreationError.Message));
             }
 
             Font builtin = Resources.GetBuiltinResource<Font>("Arial.ttf");
@@ -954,7 +1033,7 @@ namespace AlicizaX.Debugger
             return new StyleFontDefinition(StyleKeyword.Null);
         }
 
-        private void EnsureEventSystem()
+        private void CreateEventSystem()
         {
             EventSystem existing = FindObjectOfType<EventSystem>();
             if (existing != null)
@@ -1035,6 +1114,8 @@ namespace AlicizaX.Debugger
                 return;
             }
 
+            // 重建后当前缩放已经烘焙进样式，挂起的缩放变更不再需要单独应用。
+            _isWindowScaleApplyPending = false;
             _viewByWindow.Clear();
             BuildRootVisualTree();
             UpdateHeaderTitle();
@@ -1105,6 +1186,7 @@ namespace AlicizaX.Debugger
             _toggleFpsLabel.style.color = DebuggerTheme.PrimaryText;
             _toggleFpsLabel.style.letterSpacing = 0.2f;
             _toggleFpsLabel.pickingMode = PickingMode.Ignore;
+            _hasToggleFpsValue = false;
 
             button.Add(_toggleFpsLabel);
             ScrollableDebuggerWindowBase.ApplyButtonStateStyles(
@@ -1359,6 +1441,18 @@ namespace AlicizaX.Debugger
             return m_ShowFullWindow ? m_WindowScale * resolutionScale : resolutionScale;
         }
 
+        /// <summary>
+        /// 窗口工厂使用的 UI 缩放。组件尚未创建时按 1 倍处理（编辑器预览/单元测试路径）。
+        /// </summary>
+        internal static float UiScale
+        {
+            get
+            {
+                DebuggerComponent instance = Instance;
+                return instance != null ? instance.GetUiScale() : 1f;
+            }
+        }
+
         private static float GetResolutionScale()
         {
             float widthScale = Screen.width > 0 ? Screen.width / ReferenceScreenWidth : 1f;
@@ -1383,36 +1477,46 @@ namespace AlicizaX.Debugger
                 return;
             }
 
+            _sidebarDirty = false;
             _sidebarScrollView.contentContainer.Clear();
             _sidebarRowStates.Clear();
             _sidebarChildContainers.Clear();
             _activeSidebarElement = null;
-            for (int i = 0; i < _menuRoots.Count; i++)
+
+            if (_mDebuggerService?.DebuggerWindowRoot is DebuggerWindowGroup root)
             {
-                AddMenuNode(_menuRoots[i], 0);
+                AddMenuEntries(root, 0, _sidebarScrollView.contentContainer);
             }
 
             ScrollSidebarToActive();
         }
 
-        private void AddMenuNode(DebuggerMenuNode node, int depth)
+        private void AddMenuEntries(DebuggerWindowGroup group, int depth, VisualElement parent)
         {
-            AddMenuNode(node, depth, _sidebarScrollView.contentContainer);
+            // 树按注册顺序保存，渲染时按名称排序，保证扩展窗口与内置窗口的展示顺序稳定。
+            List<DebuggerWindowGroup.Entry> entries = new List<DebuggerWindowGroup.Entry>(group.Entries);
+            entries.Sort(CompareMenuEntries);
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                AddMenuEntry(entries[i], depth, parent);
+            }
         }
 
-        private void AddMenuNode(DebuggerMenuNode node, int depth, VisualElement parent)
+        private static int CompareMenuEntries(DebuggerWindowGroup.Entry left, DebuggerWindowGroup.Entry right)
         {
-            if (node == null)
-            {
-                return;
-            }
+            return string.CompareOrdinal(left.Name, right.Name);
+        }
 
+        private void AddMenuEntry(DebuggerWindowGroup.Entry entry, int depth, VisualElement parent)
+        {
             float scale = GetUiScale();
-            bool hasChildren = node.Children.Count > 0;
+            DebuggerWindowGroup childGroup = entry.Window as DebuggerWindowGroup;
+            bool hasChildren = childGroup != null && childGroup.DebuggerWindowCount > 0;
             bool isGroup = hasChildren;
-            bool isSelected = ReferenceEquals(_activeNode, node);
-            bool isAncestorOfActive = !isSelected && IsNodeActive(node);
-            bool isExpanded = hasChildren && (node.Expanded || isSelected || isAncestorOfActive);
+            bool isSelected = string.Equals(_activePath, entry.Path, StringComparison.Ordinal);
+            bool isAncestorOfActive = !isSelected && IsPathActive(entry.Path);
+            bool isExpanded = hasChildren && (isSelected || isAncestorOfActive || GetPathExpanded(entry.Path, depth));
 
             VisualElement row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
@@ -1454,7 +1558,7 @@ namespace AlicizaX.Debugger
                 row.Add(spacer);
             }
 
-            Label titleLabel = new Label(node.DisplayName);
+            Label titleLabel = new Label(entry.Name);
             titleLabel.style.flexGrow = 1f;
             titleLabel.style.minWidth = 0f;
             titleLabel.style.fontSize = (isGroup && depth == 0 ? 14f : 15f) * scale;
@@ -1472,9 +1576,11 @@ namespace AlicizaX.Debugger
             titleLabel.pickingMode = PickingMode.Ignore;
             row.Add(titleLabel);
 
-            row.AddManipulator(new Clickable(() => SelectWindowNode(node)));
+            string path = entry.Path;
+            IDebuggerWindow window = entry.Window;
+            row.AddManipulator(new Clickable(() => SelectSidebarPath(path, window)));
             SidebarRowState state = new SidebarRowState(row, titleLabel, expander, scale, isSelected, isAncestorOfActive, isGroup, isExpanded);
-            _sidebarRowStates[node] = state;
+            _sidebarRowStates[path] = state;
 
             parent.Add(row);
             if (isSelected)
@@ -1495,15 +1601,16 @@ namespace AlicizaX.Debugger
             childContainer.style.borderLeftWidth = 1f * scale;
             childContainer.style.borderLeftColor = DebuggerTheme.SidebarTreeGuide;
             childContainer.style.marginBottom = SidebarRowGap * scale;
-            _sidebarChildContainers[node] = childContainer;
+            _sidebarChildContainers[path] = childContainer;
             parent.Add(childContainer);
 
-            expander.clicked += () => ToggleMenuNodeExpanded(node);
+            expander.clicked += () => ToggleSidebarPath(path, depth);
+            AddMenuEntries(childGroup, depth + 1, childContainer);
+        }
 
-            for (int i = 0; i < node.Children.Count; i++)
-            {
-                AddMenuNode(node.Children[i], depth + 1, childContainer);
-            }
+        private bool GetPathExpanded(string path, int depth)
+        {
+            return _expansionByPath.TryGetValue(path, out bool expanded) ? expanded : depth == 0;
         }
 
         private static Button CreateSidebarExpander(float scale, bool expanded)
@@ -1592,23 +1699,20 @@ namespace AlicizaX.Debugger
             }
         }
 
-        private void ToggleMenuNodeExpanded(DebuggerMenuNode node)
+        private void ToggleSidebarPath(string path, int depth)
         {
-            if (node == null || node.Children.Count <= 0)
+            if (!_sidebarChildContainers.TryGetValue(path, out VisualElement container))
             {
                 return;
             }
 
-            node.Expanded = !node.Expanded;
-            bool nowExpanded = node.Expanded;
-            if (_sidebarChildContainers.TryGetValue(node, out VisualElement container))
-            {
-                container.style.display = nowExpanded ? DisplayStyle.Flex : DisplayStyle.None;
-            }
+            bool expanded = !GetPathExpanded(path, depth);
+            _expansionByPath[path] = expanded;
+            container.style.display = expanded ? DisplayStyle.Flex : DisplayStyle.None;
 
-            if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state))
+            if (_sidebarRowStates.TryGetValue(path, out SidebarRowState state))
             {
-                state.SetExpanded(nowExpanded);
+                state.SetExpanded(expanded);
             }
         }
 
@@ -1620,10 +1724,10 @@ namespace AlicizaX.Debugger
             }
 
             _activeSidebarElement = null;
-            foreach (KeyValuePair<DebuggerMenuNode, SidebarRowState> pair in _sidebarRowStates)
+            foreach (KeyValuePair<string, SidebarRowState> pair in _sidebarRowStates)
             {
-                bool isSelected = ReferenceEquals(_activeNode, pair.Key);
-                bool isAncestorOfActive = !isSelected && IsNodeActive(pair.Key);
+                bool isSelected = string.Equals(_activePath, pair.Key, StringComparison.Ordinal);
+                bool isAncestorOfActive = !isSelected && IsPathActive(pair.Key);
                 pair.Value.SetActive(isSelected, isAncestorOfActive);
                 if (isSelected)
                 {
@@ -1647,35 +1751,47 @@ namespace AlicizaX.Debugger
             _activeSidebarElement.schedule.Execute(() => _sidebarScrollView.ScrollTo(_activeSidebarElement)).ExecuteLater(0);
         }
 
-        private bool IsNodeActive(DebuggerMenuNode node)
+        private bool IsPathActive(string path)
         {
-            if (node == null)
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_activePath))
             {
                 return false;
             }
 
-            if (_activeNode == node)
+            if (string.Equals(_activePath, path, StringComparison.Ordinal))
             {
                 return true;
             }
 
-            return _activeNode != null && _activeNode.Path.StartsWith(ZString.Concat(node.Path, "/"), StringComparison.Ordinal);
+            // "A/B" 是 "A/B/C" 的祖先；避免 "A/B" 误判 "A/BC"。
+            return _activePath.Length > path.Length
+                && _activePath[path.Length] == '/'
+                && _activePath.StartsWith(path, StringComparison.Ordinal);
         }
 
-        private bool SelectWindowNode(DebuggerMenuNode node)
+        private bool SelectSidebarPath(string path, IDebuggerWindow window)
         {
-            if (node == null)
+            if (window is DebuggerWindowGroup)
             {
-                return false;
-            }
-
-            if (node.Window == null)
-            {
-                ToggleMenuNodeExpanded(node);
+                ToggleSidebarPath(path, CountPathDepth(path));
                 return true;
             }
 
-            return SelectWindow(node.Window);
+            return SelectWindow(window);
+        }
+
+        private static int CountPathDepth(string path)
+        {
+            int depth = 0;
+            for (int i = 0; i < path.Length; i++)
+            {
+                if (path[i] == '/')
+                {
+                    depth++;
+                }
+            }
+
+            return depth;
         }
 
         private bool SelectWindow(IDebuggerWindow window)
@@ -1697,8 +1813,8 @@ namespace AlicizaX.Debugger
             }
 
             _activeWindow = window;
-            _activeNode = _nodeByWindow.TryGetValue(window, out DebuggerMenuNode node) ? node : null;
-            ExpandParents(_activeNode);
+            _activePath = ResolveWindowPath(window);
+            ExpandAncestors(_activePath);
             _activeWindow.OnEnter();
             UpdateHeaderTitle();
 
@@ -1725,6 +1841,13 @@ namespace AlicizaX.Debugger
             return true;
         }
 
+        private string ResolveWindowPath(IDebuggerWindow window)
+        {
+            return _mDebuggerService?.DebuggerWindowRoot is DebuggerWindowGroup root && root.TryGetPath(window, out string path)
+                ? path
+                : null;
+        }
+
         private void UpdateHeaderTitle()
         {
             if (_headerTitle == null)
@@ -1732,32 +1855,33 @@ namespace AlicizaX.Debugger
                 return;
             }
 
-            _headerTitle.text = _activeNode == null ? RootWindowTitle : _activeNode.Path;
+            _headerTitle.text = string.IsNullOrEmpty(_activePath) ? RootWindowTitle : _activePath;
         }
 
-        private bool ExpandParents(DebuggerMenuNode node)
+        private void ExpandAncestors(string path)
         {
-            bool changed = false;
-            while (node != null)
+            if (string.IsNullOrEmpty(path))
             {
-                if (!node.Expanded)
-                {
-                    node.Expanded = true;
-                    changed = true;
-                    if (_sidebarChildContainers.TryGetValue(node, out VisualElement container))
-                    {
-                        container.style.display = DisplayStyle.Flex;
-                    }
-                    if (_sidebarRowStates.TryGetValue(node, out SidebarRowState state))
-                    {
-                        state.SetExpanded(true);
-                    }
-                }
-
-                node = node.Parent;
+                return;
             }
 
-            return changed;
+            int index = path.LastIndexOf('/');
+            while (index > 0)
+            {
+                string ancestor = path.Substring(0, index);
+                _expansionByPath[ancestor] = true;
+                if (_sidebarChildContainers.TryGetValue(ancestor, out VisualElement container))
+                {
+                    container.style.display = DisplayStyle.Flex;
+                }
+
+                if (_sidebarRowStates.TryGetValue(ancestor, out SidebarRowState state))
+                {
+                    state.SetExpanded(true);
+                }
+
+                index = ancestor.LastIndexOf('/');
+            }
         }
 
         private void UpdateToggleState()
@@ -1767,16 +1891,50 @@ namespace AlicizaX.Debugger
                 return;
             }
 
-            Color color = m_ConsoleWindow.FatalCount > 0
-                ? m_ConsoleWindow.GetLogStringColor(LogType.Exception)
-                : m_ConsoleWindow.ErrorCount > 0
-                    ? m_ConsoleWindow.GetLogStringColor(LogType.Error)
-                    : m_ConsoleWindow.WarningCount > 0
-                        ? m_ConsoleWindow.GetLogStringColor(LogType.Warning)
-                        : m_ConsoleWindow.GetLogStringColor(LogType.Log);
+            // FPS 每 0.5 秒才刷新一次，颜色只在日志计数变化时变化；
+            // 两者都没变就不重新格式化，避免每帧一个字符串。
+            float fps = m_FpsCounter.CurrentFps;
+            Color color = ResolveToggleFpsColor();
+            if (_hasToggleFpsValue && fps == _toggleFpsValue && ColorsEqual(color, _toggleFpsColor))
+            {
+                return;
+            }
 
-            _toggleFpsLabel.text = Utility.Text.Format("FPS:{0:F0}", m_FpsCounter.CurrentFps);
+            _hasToggleFpsValue = true;
+            _toggleFpsValue = fps;
+            _toggleFpsColor = color;
+            _toggleFpsLabel.text = Utility.Text.Format("FPS:{0:F0}", fps);
             _toggleFpsLabel.style.color = color;
+        }
+
+        private Color ResolveToggleFpsColor()
+        {
+            if (m_ConsoleWindow.FatalCount > 0)
+            {
+                return m_ConsoleWindow.GetLogStringColor(LogType.Exception);
+            }
+
+            if (m_ConsoleWindow.ErrorCount > 0)
+            {
+                return m_ConsoleWindow.GetLogStringColor(LogType.Error);
+            }
+
+            if (m_ConsoleWindow.WarningCount > 0)
+            {
+                return m_ConsoleWindow.GetLogStringColor(LogType.Warning);
+            }
+
+            return m_ConsoleWindow.GetLogStringColor(LogType.Log);
+        }
+
+        private void ApplyPendingWindowScale()
+        {
+            if (!_isWindowScaleApplyPending || Time.unscaledTime < _windowScaleApplyAt)
+            {
+                return;
+            }
+
+            RebuildRuntimeVisualTree();
         }
 
         private void SyncWindowVisibility()
@@ -2208,69 +2366,6 @@ namespace AlicizaX.Debugger
             return rect;
         }
 
-        private void RegisterMenuPath(string path, IDebuggerWindow window)
-        {
-            string[] segments = path.Split('/');
-            List<DebuggerMenuNode> current = _menuRoots;
-            DebuggerMenuNode parent = null;
-            string currentPath = string.Empty;
-
-            for (int i = 0; i < segments.Length; i++)
-            {
-                string segment = segments[i];
-                currentPath = string.IsNullOrEmpty(currentPath) ? segment : ZString.Concat(currentPath, "/", segment);
-                DebuggerMenuNode node = current.Find(item => item.DisplayName == segment);
-                if (node == null)
-                {
-                    node = new DebuggerMenuNode(segment, currentPath, parent);
-                    current.Add(node);
-                    if (parent == null)
-                    {
-                        node.Expanded = true;
-                    }
-                }
-
-                parent = node;
-                current = node.Children;
-
-                if (i == segments.Length - 1)
-                {
-                    node.Window = window;
-                    _nodeByWindow[window] = node;
-                }
-            }
-
-            _menuRoots.Sort(DebuggerMenuNodeComparer.Instance);
-        }
-
-        private void RemoveMenuWindow(IDebuggerWindow window)
-        {
-            if (!_nodeByWindow.TryGetValue(window, out DebuggerMenuNode node) || node == null)
-            {
-                return;
-            }
-
-            node.Window = null;
-            _nodeByWindow.Remove(window);
-
-            while (node != null)
-            {
-                if (node.Window != null || node.Children.Count > 0)
-                {
-                    break;
-                }
-
-                if (node.Parent == null)
-                {
-                    _menuRoots.Remove(node);
-                    break;
-                }
-
-                node.Parent.Children.Remove(node);
-                node = node.Parent;
-            }
-        }
-
         private static void CopyToClipboard(string content)
         {
             GUIUtility.systemCopyBuffer = content ?? string.Empty;
@@ -2424,51 +2519,5 @@ namespace AlicizaX.Debugger
             }
         }
 
-        private sealed class DebuggerMenuNode
-        {
-            public DebuggerMenuNode(string displayName, string path, DebuggerMenuNode parent)
-            {
-                DisplayName = displayName;
-                Path = path;
-                Parent = parent;
-            }
-
-            public string DisplayName { get; }
-
-            public string Path { get; }
-
-            public DebuggerMenuNode Parent { get; }
-
-            public List<DebuggerMenuNode> Children { get; } = new List<DebuggerMenuNode>(8);
-
-            public IDebuggerWindow Window { get; set; }
-
-            public bool Expanded { get; set; }
-        }
-
-        private sealed class DebuggerMenuNodeComparer : IComparer<DebuggerMenuNode>
-        {
-            public static readonly DebuggerMenuNodeComparer Instance = new DebuggerMenuNodeComparer();
-
-            public int Compare(DebuggerMenuNode x, DebuggerMenuNode y)
-            {
-                if (ReferenceEquals(x, y))
-                {
-                    return 0;
-                }
-
-                if (x == null)
-                {
-                    return -1;
-                }
-
-                if (y == null)
-                {
-                    return 1;
-                }
-
-                return string.CompareOrdinal(x.DisplayName, y.DisplayName);
-            }
-        }
     }
 }

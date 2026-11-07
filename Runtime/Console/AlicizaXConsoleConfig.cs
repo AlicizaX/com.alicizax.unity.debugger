@@ -9,8 +9,8 @@ namespace AlicizaX.Console
         public KeyCode SubmitCommandKey = KeyCode.Return;
         public ModifierKeyCombo SelectNextSuggestionKey = KeyCode.Tab;
         public ModifierKeyCombo SelectPreviousSuggestionKey = new ModifierKeyCombo { Key = KeyCode.Tab, Shift = true };
-        public KeyCode NextCommandKey = KeyCode.UpArrow;
-        public KeyCode PreviousCommandKey = KeyCode.DownArrow;
+        public KeyCode HistoryPreviousKey = KeyCode.UpArrow;
+        public KeyCode HistoryNextKey = KeyCode.DownArrow;
         public ModifierKeyCombo CancelActionsKey = new ModifierKeyCombo { Key = KeyCode.C, Ctrl = true };
 
         public bool VerboseErrors;
