@@ -709,8 +709,7 @@ namespace AlicizaX.Debugger
 
                 if (selection != null)
                 {
-                    selection.cursorColor = Color.clear;
-                    selection.selectionColor = DebuggerTheme.TextSelection;
+                    ApplySelectionColors(selection, Color.clear, DebuggerTheme.TextSelection);
                     TrySetCursorWidth(selection, 1f);
                 }
 
@@ -724,8 +723,7 @@ namespace AlicizaX.Debugger
 
                 try
                 {
-                    textElement.selection.cursorColor = Color.clear;
-                    textElement.selection.selectionColor = DebuggerTheme.TextSelection;
+                    ApplySelectionColors(textElement.selection, Color.clear, DebuggerTheme.TextSelection);
                     TrySetCursorWidth(textElement.selection, 1f);
                 }
                 catch (Exception e)
@@ -735,6 +733,46 @@ namespace AlicizaX.Debugger
 
                 textElement.style.color = DebuggerTheme.PrimaryText;
             }
+
+            /// <summary>
+            /// 写入输入框的光标/选区颜色。Unity 6000.5 起 ITextSelection.cursorColor / selectionColor 标记废弃，
+            /// 官方替代是 USS 自定义属性（--unity-cursor-color / --unity-selection-color），但运行时没有写
+            /// IStyle 自定义属性的公开 API，而调试器主题色是运行期常量。因此新版本沿用本文件已有的反射写法，
+            /// 保持与旧版本完全一致的表现；将来属性被移除时自然降级为使用默认选择色。
+            /// </summary>
+            private static void ApplySelectionColors(ITextSelection selection, Color cursorColor, Color selectionColor)
+            {
+                if (selection == null)
+                {
+                    return;
+                }
+
+#if UNITY_6000_5_OR_NEWER
+                TrySetSelectionColor(selection, "cursorColor", cursorColor);
+                TrySetSelectionColor(selection, "selectionColor", selectionColor);
+#else
+                selection.cursorColor = cursorColor;
+                selection.selectionColor = selectionColor;
+#endif
+            }
+
+#if UNITY_6000_5_OR_NEWER
+            private static void TrySetSelectionColor(ITextSelection selection, string propertyName, Color color)
+            {
+                try
+                {
+                    PropertyInfo property = selection.GetType().GetProperty(propertyName);
+                    if (property != null && property.CanWrite)
+                    {
+                        property.SetValue(selection, color);
+                    }
+                }
+                catch (Exception e)
+                {
+                    WarnCaretUnsupported(e);
+                }
+            }
+#endif
 
             private static void WarnCaretUnsupported(Exception e)
             {

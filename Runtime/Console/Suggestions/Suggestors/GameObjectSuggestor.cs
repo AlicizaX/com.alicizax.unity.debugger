@@ -18,13 +18,8 @@ namespace AlicizaX.Console.Suggestors
 
         protected override IEnumerable<string> GetItems(SuggestionContext context, SuggestorOptions options)
         {
-#if UNITY_6000_0_OR_NEWER
-            return Object.FindObjectsByType<GameObject>()
+            return UnityObjectQuery.FindAll<GameObject>()
                 .Select(obj => obj.name);
-#else
-            return Object.FindObjectsOfType<GameObject>()
-                .Select(obj => obj.name);
-#endif
         }
     }
 }

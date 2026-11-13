@@ -24,15 +24,9 @@ namespace AlicizaX.Console.Suggestors
 
         protected override IEnumerable<string> GetItems(SuggestionContext context, SuggestorOptions options)
         {
-#if UNITY_6000_0_OR_NEWER
-            return Object.FindObjectsByType(context.TargetType)
+            return UnityObjectQuery.FindAll(context.TargetType)
                 .Select(cmp => (Component) cmp)
                 .Select(cmp => cmp.gameObject.name);
-#else
-            return Object.FindObjectsOfType(context.TargetType)
-                .Select(cmp => (Component) cmp)
-                .Select(cmp => cmp.gameObject.name);
-#endif
         }
     }
 }

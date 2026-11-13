@@ -151,7 +151,7 @@ namespace AlicizaX.Debugger
             {
                 if (_instance == null)
                 {
-                    _instance = FindObjectOfType<DebuggerComponent>();
+                    _instance = UnityObjectQuery.FindFirst<DebuggerComponent>();
                 }
 
                 return _instance;
@@ -827,6 +827,11 @@ namespace AlicizaX.Debugger
             panelSettings.textSettings = ResolvePanelTextSettings();
         }
 
+#if UNITY_6000_5_OR_NEWER
+        private static readonly PropertyInfo DefaultFontAssetProperty =
+            typeof(PanelTextSettings).GetProperty("defaultFontAsset");
+#endif
+
         private PanelTextSettings ResolvePanelTextSettings()
         {
             if (_panelTextSettings == null)
@@ -840,7 +845,23 @@ namespace AlicizaX.Debugger
             FontAsset safeFont = ResolveSafeFontAsset();
             if (safeFont != null)
             {
+#if UNITY_6000_5_OR_NEWER
+                // Unity 6000.5 起 TextSettings.defaultFontAsset 标记废弃，官方未提供替代属性（只剩
+                // defaultFontAssetPath 与 fallbackFontAssets）。属性本身仍可写，这里用反射写入以保持原有
+                // 显示效果；同时并入 fallback 链，保证将来该属性被移除后仍有可用字体。
+                DefaultFontAssetProperty?.SetValue(_panelTextSettings, safeFont);
+                if (_panelTextSettings.fallbackFontAssets == null)
+                {
+                    _panelTextSettings.fallbackFontAssets = new System.Collections.Generic.List<FontAsset>();
+                }
+
+                if (!_panelTextSettings.fallbackFontAssets.Contains(safeFont))
+                {
+                    _panelTextSettings.fallbackFontAssets.Add(safeFont);
+                }
+#else
                 _panelTextSettings.defaultFontAsset = safeFont;
+#endif
             }
 
             return _panelTextSettings;
@@ -1035,7 +1056,7 @@ namespace AlicizaX.Debugger
 
         private void CreateEventSystem()
         {
-            EventSystem existing = FindObjectOfType<EventSystem>();
+            EventSystem existing = UnityObjectQuery.FindFirst<EventSystem>();
             if (existing != null)
             {
                 return;
@@ -1996,7 +2017,8 @@ namespace AlicizaX.Debugger
                 return;
             }
 
-            _window.transform.scale = Vector3.one;
+            // VisualElement.transform 的写入在 Unity 6.x 已废弃，改用 style.scale（2021.2+ 全区间可用）。
+            _window.style.scale = new StyleScale(new Scale(Vector3.one));
             _panelSettings.scale = 1f;
         }
 

@@ -28,11 +28,7 @@ namespace AlicizaX.Console
             {
                 case MonoTargetType.Single:
                 {
-#if UNITY_6000_0_OR_NEWER
-                    Object target = Object.FindAnyObjectByType(classType);
-#else
-                    Object target = Object.FindObjectOfType(classType);
-#endif
+                    Object target = UnityObjectQuery.FindFirst(classType);
                     return target == null ? Enumerable.Empty<object>() : target.Yield();
                 }
                 case MonoTargetType.SingleInactive:
@@ -45,13 +41,8 @@ namespace AlicizaX.Console
                 }
                 case MonoTargetType.All:
                 {
-#if UNITY_6000_0_OR_NEWER
-                    return Object.FindObjectsByType(classType)
+                    return UnityObjectQuery.FindAll(classType)
                         .OrderBy(x => x.name, new AlphanumComparator());
-#else
-                    return Object.FindObjectsOfType(classType)
-                        .OrderBy(x => x.name, new AlphanumComparator());
-#endif
                 }
                 case MonoTargetType.AllInactive:
                 {
