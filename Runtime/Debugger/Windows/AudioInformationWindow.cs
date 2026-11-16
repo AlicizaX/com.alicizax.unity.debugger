@@ -68,20 +68,15 @@ namespace AlicizaX.Debugger
                 VisualElement section = CreateSection("Audio Categories", out VisualElement card);
                 for (int i = 0; i < _audioDebugService.CategoryCount; i++)
                 {
-                    if (!_audioDebugService.FillCategoryDebugInfo(i, _categoryInfo))
-                    {
-                        continue;
-                    }
-
+                    _audioDebugService.FillCategoryDebugInfo(i, _categoryInfo);
                     card.Add(CreateRow(
                         _categoryInfo.Type.ToString(),
                         ZString.Format(
-                            "Enabled {0} | Volume {1:F2} | Active {2} | Free {3} | Heap {4} | Capacity {5}",
+                            "Enabled {0} | Volume {1:F2} | Active {2} | Free {3} | Capacity {4}",
                             _categoryInfo.Enabled,
                             _categoryInfo.Volume,
                             _categoryInfo.ActiveCount,
                             _categoryInfo.FreeCount,
-                            _categoryInfo.HeapCount,
                             _categoryInfo.Capacity)));
                 }
 
@@ -94,10 +89,7 @@ namespace AlicizaX.Debugger
                 bool hasActive = false;
                 for (int typeIndex = 0; typeIndex < _audioDebugService.CategoryCount; typeIndex++)
                 {
-                    if (!_audioDebugService.FillCategoryDebugInfo(typeIndex, _categoryInfo))
-                    {
-                        continue;
-                    }
+                    _audioDebugService.FillCategoryDebugInfo(typeIndex, _categoryInfo);
 
                     for (int agentIndex = 0; agentIndex < _categoryInfo.Capacity; agentIndex++)
                     {
@@ -145,21 +137,18 @@ namespace AlicizaX.Debugger
                 while (entry != null)
                 {
                     AudioClipCacheEntry next = entry.AllNext;
-                    if (_audioDebugService.FillClipCacheDebugInfo(entry, _clipCacheInfo))
-                    {
-                        card.Add(CreateRow(
-                            _clipCacheInfo.Address,
-                            ZString.Format(
-                                "Ref {0} | Pending {1} | Loaded {2} | Loading {3} | Pinned {4} | LRU {5} | Last {6:F1}s",
-                                _clipCacheInfo.RefCount,
-                                _clipCacheInfo.PendingCount,
-                                _clipCacheInfo.IsLoaded,
-                                _clipCacheInfo.Loading,
-                                _clipCacheInfo.Pinned,
-                                _clipCacheInfo.InLru,
-                                Time.realtimeSinceStartup - _clipCacheInfo.LastUseTime)));
-                    }
-
+                    _audioDebugService.FillClipCacheDebugInfo(entry, _clipCacheInfo);
+                    card.Add(CreateRow(
+                        _clipCacheInfo.Address,
+                        ZString.Format(
+                            "Ref {0} | Pending {1} | Loaded {2} | Loading {3} | Pinned {4} | LRU {5} | Last {6:F1}s",
+                            _clipCacheInfo.RefCount,
+                            _clipCacheInfo.PendingCount,
+                            _clipCacheInfo.IsLoaded,
+                            _clipCacheInfo.Loading,
+                            _clipCacheInfo.Pinned,
+                            _clipCacheInfo.InLru,
+                            Time.realtimeSinceStartup - _clipCacheInfo.LastUseTime)));
                     entry = next;
                 }
 
