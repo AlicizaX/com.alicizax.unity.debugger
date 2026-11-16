@@ -2,7 +2,7 @@ name: QQ 通知
 
 on:
   push:
-    tags-ignore:
+    branches:
       - '**'
   workflow_dispatch:
 
